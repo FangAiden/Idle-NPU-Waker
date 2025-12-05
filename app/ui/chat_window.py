@@ -20,6 +20,7 @@ from app.config import MODELS_DIR, PRESET_MODELS, DOWNLOAD_CACHE_DIR
 
 from app.ui.message_bubble import MessageBubble
 from app.ui.resources import APP_ICON_SVG
+from app.core.i18n import i18n
 
 class ChatWindow(QMainWindow):
     sig_do_load = pyqtSignal(str, str, str, str)
@@ -30,7 +31,7 @@ class ChatWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Idle NPU Waker")
+        # 窗口标题将在 update_texts 中设置
         self.resize(1200, 850)
         icon_pix = QPixmap()
         icon_pix.loadFromData(APP_ICON_SVG)
@@ -130,19 +131,19 @@ class ChatWindow(QMainWindow):
         input_layout.setContentsMargins(20, 15, 20, 15)
         
         self.input_box = QLineEdit()
-        self.input_box.setPlaceholderText("输入消息 (Enter 发送)...")
+        # setPlaceholderText 在 update_texts 中设置
         self.input_box.returnPressed.connect(self.do_send)
         self.input_box.setStyleSheet("QLineEdit { background-color: #0e1525; border: 1px solid #1e2842; border-radius: 8px; padding: 10px; color: #e6e8ee; font-size: 14px; } QLineEdit:focus { border: 1px solid #5aa9ff; }")
 
         self.btn_stack = QStackedWidget()
         self.btn_stack.setFixedSize(80, 40)
         
-        self.btn_send = QPushButton("发送")
+        self.btn_send = QPushButton() # 文本在 update_texts 中设置
         self.btn_send.setStyleSheet("QPushButton { background-color: #5aa9ff; color: #000; border-radius: 6px; font-weight: bold; font-size: 14px; } QPushButton:hover { background-color: #4a99ef; }")
         self.btn_send.clicked.connect(self.do_send)
         self.btn_stack.addWidget(self.btn_send)
         
-        self.btn_stop_gen = QPushButton("停止")
+        self.btn_stop_gen = QPushButton() # 文本在 update_texts 中设置
         self.btn_stop_gen.setStyleSheet("QPushButton { background-color: #f08a5d; color: #000; border-radius: 6px; font-weight: bold; font-size: 14px; } QPushButton:hover { background-color: #e07a4d; }")
         self.btn_stop_gen.clicked.connect(self.do_stop_gen)
         self.btn_stack.addWidget(self.btn_stop_gen)
@@ -156,6 +157,15 @@ class ChatWindow(QMainWindow):
         splitter.setCollapsible(0, False)
         main_layout.addWidget(splitter)
 
+        self.update_texts()
+        i18n.language_changed.connect(self.update_texts)
+
+    def update_texts(self):
+        self.setWindowTitle(i18n.t("app_title"))
+        self.input_box.setPlaceholderText(i18n.t("input_placeholder"))
+        self.btn_send.setText(i18n.t("btn_send"))
+        self.btn_stop_gen.setText(i18n.t("btn_stop"))
+
     # ================= 业务逻辑 =================
 
     def do_clear_cache(self):
@@ -166,13 +176,14 @@ class ChatWindow(QMainWindow):
         try:
             total_size = sum(f.stat().st_size for f in DOWNLOAD_CACHE_DIR.glob('**/*') if f.is_file())
             size_mb = total_size / (1024 * 1024)
-            size_info = f"\n占用: {size_mb:.2f} MB"
+            size_info = f"\n{size_mb:.2f} MB"
         except: pass
 
-        reply = QMessageBox.question(self, "确认清空", 
-                                     f"确定要强力清除缓存吗？{size_info}\n如果文件被占用，程序将尝试强制解锁。",
-                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-                                     QMessageBox.StandardButton.No)
+        reply = QMessageBox.question(self, 
+            i18n.t("dialog_confirm_clear"), 
+            i18n.t("dialog_clear_msg") + size_info,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No)
         
         if reply != QMessageBox.StandardButton.Yes:
             return
@@ -182,7 +193,7 @@ class ChatWindow(QMainWindow):
             try: func(path)
             except Exception: pass 
 
-        self.sidebar.lbl_dl_status.setText("正在清理缓存...")
+        self.sidebar.lbl_dl_status.setText(i18n.t("status_cleaning"))
         QApplication.processEvents()
         
         success = False
@@ -198,18 +209,20 @@ class ChatWindow(QMainWindow):
         if success:
             try:
                 DOWNLOAD_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-                QMessageBox.information(self, "成功", "缓存已成功清空！")
-                self.sidebar.lbl_dl_status.setText("缓存已清理")
+                QMessageBox.information(self, i18n.t("dialog_success"), i18n.t("dialog_cache_cleared"))
+                self.sidebar.lbl_dl_status.setText(i18n.t("status_ready"))
                 self.sidebar.dl_progress.setValue(0)
                 self.sidebar.dl_progress.setFormat("")
             except: pass
         else:
-            QMessageBox.warning(self, "警告", "部分文件仍被占用，请重启软件后再次尝试清理。")
+            QMessageBox.warning(self, i18n.t("dialog_warning"), i18n.t("dialog_file_locked"))
 
     def create_new_chat(self):
         sid = str(uuid.uuid4())
-        self.sessions[sid] = {"title": "新对话", "history": []}
-        item = QListWidgetItem("新对话")
+        # 使用配置中的默认名称
+        default_name = i18n.t("default_chat_name", "New Chat")
+        self.sessions[sid] = {"title": default_name, "history": []}
+        item = QListWidgetItem(default_name)
         item.setData(Qt.ItemDataRole.UserRole, sid)
         self.sidebar.chat_list.insertItem(0, item)
         self.sidebar.chat_list.setCurrentItem(item)
@@ -222,14 +235,19 @@ class ChatWindow(QMainWindow):
         from PyQt6.QtGui import QAction
         menu = QMenu(self)
         menu.setStyleSheet("QMenu { background-color: #1e2842; color: #fff; border: 1px solid #333; } QMenu::item { padding: 5px 20px; } QMenu::item:selected { background-color: #5aa9ff; color: #000; }")
-        del_action = QAction("删除会话", self)
+        
+        del_action = QAction(i18n.t("menu_delete_chat"), self)
         del_action.triggered.connect(lambda: self.delete_session(item))
         menu.addAction(del_action)
         menu.exec(self.sidebar.chat_list.mapToGlobal(pos))
 
     def delete_session(self, item):
         sid = item.data(Qt.ItemDataRole.UserRole)
-        reply = QMessageBox.question(self, '确认删除', f'确定要删除会话 "{item.text()}" 吗?', QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        reply = QMessageBox.question(self, 
+            i18n.t("dialog_confirm_delete"), 
+            i18n.t("dialog_delete_msg").format(item.text()), 
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        
         if reply == QMessageBox.StandardButton.Yes:
             if sid in self.sessions: del self.sessions[sid]
             row = self.sidebar.chat_list.row(item)
@@ -293,6 +311,7 @@ class ChatWindow(QMainWindow):
         if rid: self.sig_start_download.emit(rid)
     def do_pause_action(self): self.sig_pause_download.emit()
     def do_stop_action(self): self.sig_stop_download.emit()
+    
     def on_download_state_changed(self, running):
         self.sidebar.btn_download.setVisible(not running)
         self.sidebar.btn_pause.setVisible(running)
@@ -301,29 +320,33 @@ class ChatWindow(QMainWindow):
         self.sidebar.combo_repo.setEnabled(not running)
         self.sidebar.dl_progress.setVisible(running or self.sidebar.dl_progress.value()>0)
         if running:
-            self.sidebar.dl_progress.setFormat("连接中...")
+            self.sidebar.dl_progress.setFormat("...")
             self.sidebar.dl_progress.setRange(0, 0)
+            
     def on_download_progress(self, f, p):
         self.sidebar.dl_progress.setRange(0, 100)
         self.sidebar.dl_progress.setValue(p)
         self.sidebar.dl_progress.setFormat(f"{p}%")
-        self.sidebar.lbl_dl_status.setText(f"下载中: {f}")
+        self.sidebar.lbl_dl_status.setText(i18n.t("status_downloading").format(f))
+        
     def on_download_finished(self, p):
-        self.sidebar.lbl_dl_status.setText("✅ 完成")
+        self.sidebar.lbl_dl_status.setText(i18n.t("status_ready"))
         self.scan_local_models()
         self.sidebar.combo_models.setCurrentIndex(self.sidebar.combo_models.findText(Path(p).name))
         self.sidebar.dl_progress.setValue(100)
         self.sidebar.dl_progress.setFormat("100%")
-        QMessageBox.information(self, "成功", f"模型已就绪:\n{Path(p).name}")
+        QMessageBox.information(self, i18n.t("dialog_success"), i18n.t("dialog_model_ready").format(Path(p).name))
+        
     def on_download_log(self, m): self.sidebar.lbl_dl_status.setText(m)
     def on_download_error(self, e): 
         self.sidebar.lbl_dl_status.setText(f"❌ {e}")
         self.sidebar.dl_progress.setVisible(False)
+        
     def do_send(self):
         txt = self.input_box.text().strip()
         if not txt: return
         if not self.runtime.tokenizer:
-            QMessageBox.warning(self, "提示", "请先加载模型")
+            QMessageBox.warning(self, i18n.t("app_title"), i18n.t("tip_load_model_first"))
             return
         self.add_bubble(txt, is_user=True)
         self.input_box.clear()
@@ -332,41 +355,48 @@ class ChatWindow(QMainWindow):
         sess["history"].append({"role":"user", "content":txt})
         self.btn_stack.setCurrentIndex(1)
         self.current_ai_buffer = ""
-        self.current_ai_bubble = self.add_bubble("思考中...", is_user=False)
+        self.current_ai_bubble = self.add_bubble(i18n.t("msg_thinking"), is_user=False)
         try:
             prompt = self.runtime.tokenizer.apply_chat_template(sess["history"], add_generation_prompt=True, tokenize=False)
         except: prompt = txt
         self.sig_do_generate.emit(prompt, {"max_new_tokens": 1024})
+        
     def on_token_received(self, text):
         self.current_ai_buffer += text
         if self.current_ai_bubble:
             self.current_ai_bubble.update_text(self.current_ai_buffer)
             self.scroll_to_bottom()
+            
     def on_generation_finished(self):
         self.sessions[self.current_session_id]["history"].append({"role": "assistant", "content": self.current_ai_buffer})
         self.current_ai_bubble = None
         self.btn_stack.setCurrentIndex(0)
+        
     def do_stop_gen(self): self.worker_ai.stop()
+    
     def do_load_model(self):
         p = self.sidebar.combo_models.currentData()
         d = self.sidebar.combo_device.currentText()
         if p:
-            self.sidebar.lbl_dl_status.setText(f"加载中: {Path(p).name}")
+            self.sidebar.lbl_dl_status.setText(i18n.t("status_loading_model").format(Path(p).name))
             self.sidebar.btn_load.setEnabled(False)
             self.btn_stack.setEnabled(False)
             self.sig_do_load.emit("local", "", p, d)
+            
     def on_model_loaded(self, mid, dev):
-        self.sidebar.lbl_dl_status.setText(f"✅ 已加载 ({dev})")
+        self.sidebar.lbl_dl_status.setText(i18n.t("status_loaded").format(dev))
         self.sidebar.btn_load.setEnabled(True)
         self.btn_stack.setEnabled(True)
-        QMessageBox.information(self, "就绪", f"模型加载成功 ({dev})")
+        QMessageBox.information(self, i18n.t("dialog_loaded_title"), i18n.t("dialog_loaded_msg").format(dev))
+        
     def on_error(self, e):
         self.sidebar.btn_load.setEnabled(True)
         self.btn_stack.setEnabled(True)
         self.btn_stack.setCurrentIndex(0)
-        QMessageBox.critical(self, "错误", e)
+        QMessageBox.critical(self, i18n.t("dialog_error"), e)
         if self.current_ai_bubble:
-            self.current_ai_bubble.update_text(self.current_ai_buffer + f"\n[错误: {e}]")
+            self.current_ai_bubble.update_text(self.current_ai_buffer + f"\n[{i18n.t('dialog_error')}: {e}]")
+            
     def closeEvent(self, e):
         self.dl_manager.stop_download()
         self.worker_ai.stop()

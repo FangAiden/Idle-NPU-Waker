@@ -7,6 +7,7 @@ from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QIcon, QPixmap, QTransform, QDesktopServices
 from PyQt6.QtCore import QUrl
 from app.ui.resources import AI_AVATAR_SVG, USER_AVATAR_SVG, COPY_ICON_SVG, CHEVRON_ICON_SVG
+from app.core.i18n import i18n
 
 try:
     import markdown
@@ -23,8 +24,11 @@ class MessageBubble(QWidget):
         
         self.think_start_time = None
         self.think_duration = None
+        self.is_currently_thinking = False
         
         self.init_ui()
+        
+        i18n.language_changed.connect(self.refresh_ui_text)
 
     def init_ui(self):
         layout = QHBoxLayout(self)
@@ -95,7 +99,6 @@ class MessageBubble(QWidget):
         self.content_lbl.setWordWrap(True)
         self.content_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.content_lbl.setOpenExternalLinks(True)
-        # 处理链接点击
         self.content_lbl.linkActivated.connect(self.open_link)
         
         bg_color = "#1e2842" if self.is_user else "#2d3748"
@@ -153,20 +156,37 @@ class MessageBubble(QWidget):
         self.thinking_expanded = not self.thinking_expanded
         self.think_frame.setVisible(self.thinking_expanded)
         self.update_toggle_icon()
-        self.update_status_text()
+        self.update_status_text(self.is_currently_thinking)
+
+    def refresh_ui_text(self):
+        """当语言改变时被调用"""
+        # 如果是"思考中..."的占位符状态，刷新占位符文本
+        # 注意：这里需要一种健壮的方式判断是否处于占位状态，
+        # 简单起见，如果 full_text 匹配某种已知的"思考中"文本，或者 btn_think_toggle 不可见且 full_text 较短
+        if not self.btn_think_toggle.isVisible() and len(self.full_text) < 20: 
+             # 重新渲染一遍，update_display_text 内部会处理 "msg_thinking"
+             self.update_display_text(self.full_text)
+        
+        # 刷新思考状态栏文字
+        if self.btn_think_toggle.isVisible():
+            self.update_status_text(self.is_currently_thinking)
 
     def update_status_text(self, is_thinking=False):
+        self.is_currently_thinking = is_thinking
         duration_str = ""
+        
         if self.think_duration is not None:
-            duration_str = f"（用时 {self.think_duration:.1f} 秒）"
+            duration_str = i18n.t("think_cost_pattern").format(self.think_duration)
         elif self.think_start_time is not None:
             elapsed = time.time() - self.think_start_time
-            duration_str = f"（{elapsed:.1f} 秒）"
+            duration_str = i18n.t("think_duration_pattern").format(elapsed)
             
         if is_thinking:
-            self.btn_think_toggle.setText(f" 深度思考中... {duration_str}")
+            status = i18n.t("think_status_running")
+            self.btn_think_toggle.setText(f" {status} {duration_str}")
         else:
-            self.btn_think_toggle.setText(f" 已深度思考 {duration_str}")
+            status = i18n.t("think_status_done")
+            self.btn_think_toggle.setText(f" {status} {duration_str}")
 
     def update_text(self, new_text):
         self.full_text = new_text
@@ -175,8 +195,10 @@ class MessageBubble(QWidget):
     def update_display_text(self, text):
         if not text: return
         
-        if text == "思考中...":
-            self.content_lbl.setText(f"<i style='color:#888'>思考中...</i>")
+        current_thinking_msg = i18n.t("msg_thinking")
+        
+        if text == current_thinking_msg or text == "思考中...":
+            self.content_lbl.setText(f"<i style='color:#888'>{current_thinking_msg}</i>")
             self.btn_think_toggle.setVisible(False)
             self.think_frame.setVisible(False)
             return
@@ -201,25 +223,23 @@ class MessageBubble(QWidget):
                 main_content = ""
                 is_thinking = True
 
-        # 更新思考部分 UI
         if think_content:
             self.btn_think_toggle.setVisible(True)
             if self.thinking_expanded: self.think_frame.setVisible(True)
             safe_think = html.escape(think_content).replace("\n", "<br>")
+            
             self.update_status_text(is_thinking)
+            
             if is_thinking: safe_think += " <span style='color:#5aa9ff'>▌</span>"
             self.think_lbl.setText(safe_think)
         else:
             self.btn_think_toggle.setVisible(False)
             self.think_frame.setVisible(False)
 
-        # 更新正文 UI
         if main_content:
             self.content_lbl.setVisible(True)
             
             if HAS_MARKDOWN:
-                # 转换 Markdown 为 HTML
-                # extensions 里的 fenced_code 支持 ``` 代码块
                 html_content = markdown.markdown(main_content, extensions=['fenced_code', 'nl2br'])
                 
                 style = """
@@ -239,15 +259,11 @@ class MessageBubble(QWidget):
                 a { color: #5aa9ff; text-decoration: none; }
                 </style>
                 """
-                
-                # 设置为富文本格式
                 self.content_lbl.setTextFormat(Qt.TextFormat.RichText)
                 self.content_lbl.setText(style + html_content)
             else:
-                # 如果没安装 markdown 库，尝试使用 Qt 自带的简单 Markdown
                 self.content_lbl.setTextFormat(Qt.TextFormat.MarkdownText)
                 self.content_lbl.setText(main_content)
-                
         else:
             self.content_lbl.setVisible(False)
             

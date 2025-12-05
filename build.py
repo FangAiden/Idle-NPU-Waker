@@ -25,8 +25,10 @@ COLLECT_PACKAGES = [
 ]
 
 # 需要添加的数据文件 (格式: 源路径;目标路径)
+# 注意：Windows下分隔符为 ; (分号)，Linux/Mac下为 : (冒号)
 ADD_DATA = [
-    "app;app"
+    "app;app",
+    "app/lang;app/lang"
 ]
 # ===========================================
 
@@ -73,7 +75,8 @@ def run_pyinstaller():
     else:
         print(f" ! 未找到图标 {ICON_FILE}，将使用默认图标")
 
-    path_sep = ";" if os.name == 'nt' else ":"
+    # 注意：这里的逻辑假设你在 Windows 上运行。
+    # 如果在 Linux/Mac 上打包，可能需要根据 os.name 调整 ADD_DATA 中的分隔符
     for data in ADD_DATA:
         cmd.append(f"--add-data={data}")
 
@@ -109,7 +112,7 @@ def main():
         
         if os.name == 'nt':
             try:
-                time.sleep(1)
+                time.sleep(2)
                 os.startfile(dist_path)
             except:
                 pass

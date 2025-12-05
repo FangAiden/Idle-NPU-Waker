@@ -3,6 +3,7 @@ import os
 import re
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot, QProcess
 from app.config import DOWNLOAD_CACHE_DIR, MODELS_DIR
+from app.core.i18n import i18n
 
 SCRIPT_PATH = os.path.join(os.path.dirname(__file__), "download_script.py")
 ANSI_ESCAPE = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
@@ -22,23 +23,19 @@ class DownloadManager(QObject):
     @pyqtSlot(str)
     def start_download(self, repo_id):
         if self.process and self.process.state() != QProcess.ProcessState.NotRunning:
-            self.signal_log.emit("下载任务进行中...")
+            self.signal_log.emit(i18n.t("dl_task_running"))
             return
 
         self._manual_stop = False
         
         self.process = QProcess()
-        
         self.process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
 
         if getattr(sys, 'frozen', False):
-            # 打包环境：调用 exe 本身作为 worker
             program = sys.executable
             args = ["--worker-download", repo_id, str(DOWNLOAD_CACHE_DIR), str(MODELS_DIR)]
         else:
-            # 开发环境：调用 python 解释器
             program = sys.executable
-            # 确保脚本路径是绝对路径
             script_abs_path = os.path.abspath(SCRIPT_PATH)
             args = [script_abs_path, repo_id, str(DOWNLOAD_CACHE_DIR), str(MODELS_DIR)]
 
@@ -50,7 +47,7 @@ class DownloadManager(QObject):
         
         self.process.start()
         
-        self.signal_log.emit("正在初始化下载进程...")
+        self.signal_log.emit(i18n.t("dl_init_process"))
         self.signal_process_state.emit(True)
 
     @pyqtSlot()
@@ -58,27 +55,23 @@ class DownloadManager(QObject):
         if self.process and self.process.state() != QProcess.ProcessState.NotRunning:
             self._manual_stop = True
             self.process.kill()
-            self.signal_log.emit("已暂停")
-            # 状态变更会在 finished 信号中处理
+            self.signal_log.emit(i18n.t("dl_paused"))
 
     @pyqtSlot()
     def stop_download(self):
         if self.process and self.process.state() != QProcess.ProcessState.NotRunning:
             self._manual_stop = True
             self.process.kill()
-            self.signal_log.emit("下载已取消")
+            self.signal_log.emit(i18n.t("dl_cancelled"))
 
     def _handle_output(self):
-        # 读取合并后的输出（包含 stdout 和 stderr）
         data = self.process.readAllStandardOutput().data()
         try:
-            # 尝试解码，忽略解码错误防止崩溃
             text = data.decode('utf-8', errors='ignore')
         except:
             return
 
         for line in text.splitlines():
-            # 清洗 ANSI 控制符
             line = ANSI_ESCAPE.sub('', line).strip()
             if not line: continue
 
@@ -103,7 +96,7 @@ class DownloadManager(QObject):
             
             else:
                 if "Traceback" in line or "Error" in line or "Exception" in line:
-                    self.signal_log.emit(f"[系统] {line}")
+                    self.signal_log.emit(i18n.t("dl_sys_prefix").format(line))
 
     def _on_process_finished(self, exit_code, exit_status):
         self.signal_process_state.emit(False)
@@ -112,8 +105,8 @@ class DownloadManager(QObject):
             return
 
         if exit_code != 0 or exit_status == QProcess.ExitStatus.CrashExit:
-            error_msg = f"下载进程异常退出 (代码: {exit_code})"
+            error_msg = i18n.t("dl_error_exit").format(exit_code)
             if exit_code == 1:
-                error_msg += "\n可能原因：缺少依赖库 (modelscope) 或网络连接失败。"
+                error_msg += i18n.t("dl_error_reason")
             
             self.signal_error.emit(error_msg)

@@ -6,6 +6,8 @@ import ctypes
 from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtGui import QIcon, QPixmap
 
+from app.core.i18n import i18n
+
 multiprocessing.freeze_support()
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -24,7 +26,9 @@ def global_exception_handler(exc_type, exc_value, exc_traceback):
     
     try:
         if QApplication.instance():
-            QMessageBox.critical(None, "程序崩溃", f"发生未处理的异常，详情请查看 crash.log\n\n{exc_value}")
+            title = i18n.t("crash_title", "Application Crash")
+            msg = i18n.t("crash_message", "An unhandled exception occurred.\n\n{0}").format(exc_value)
+            QMessageBox.critical(None, title, msg)
     except:
         pass
 
@@ -37,6 +41,7 @@ def main():
     except Exception:
         pass
 
+    # 处理独立下载进程的参数
     if len(sys.argv) > 1 and sys.argv[1] == "--worker-download":
         from app.core.download_script import run_download_task
         run_download_task(sys.argv[2:])
@@ -46,6 +51,8 @@ def main():
     from app.ui.resources import APP_ICON_SVG 
 
     app = QApplication(sys.argv)
+    
+    i18n.auto_init()
     
     app_icon = QPixmap()
     app_icon.loadFromData(APP_ICON_SVG)

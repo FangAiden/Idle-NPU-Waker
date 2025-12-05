@@ -1,0 +1,61 @@
+{
+    "app_title": "Idle NPU Waker",
+    
+    "btn_new_chat": "+ 新建对话",
+    "group_download": "下载模型 (魔搭社区)",
+    "placeholder_repo": "选择或输入模型ID...",
+    "btn_download": "下载",
+    "btn_pause": "暂停",
+    "btn_cancel": "取消",
+    "btn_clear_cache": "清空下载缓存",
+    "status_ready": "就绪",
+    "status_downloading": "下载中: {0}",
+    "status_cleaning": "正在清理...",
+    "status_loading_model": "加载中: {0}",
+    "status_loaded": "✅ 已加载 ({0})",
+    
+    "group_run": "运行设置",
+    "label_device": "设备:",
+    "label_model": "本地模型:",
+    "label_language": "语言 / Language:",
+    "btn_load_model": "加载模型",
+    
+    "input_placeholder": "输入消息 (Enter 发送)...",
+    "btn_send": "发送",
+    "btn_stop": "停止",
+    "default_chat_name": "新对话",
+    
+    "msg_thinking": "思考中...",
+    "think_status_running": "深度思考中...",
+    "think_status_done": "已深度思考",
+    "think_cost_pattern": "（用时 {0:.1f} 秒）",
+    "think_duration_pattern": "（{0:.1f} 秒）",
+    
+    "tip_load_model_first": "请先加载模型",
+    
+    "menu_delete_chat": "删除会话",
+    
+    "dialog_confirm_delete": "确认删除",
+    "dialog_delete_msg": "确定要删除会话 \"{0}\" 吗?",
+    "dialog_confirm_clear": "确认清空",
+    "dialog_clear_msg": "确定要强力清除缓存吗？\n如果文件被占用，程序将尝试强制解锁。",
+    "dialog_success": "成功",
+    "dialog_cache_cleared": "缓存已成功清空！",
+    "dialog_warning": "警告",
+    "dialog_file_locked": "部分文件仍被占用，请重启软件后再次尝试清理。",
+    "dialog_model_ready": "模型已就绪:\n{0}",
+    "dialog_loaded_title": "就绪",
+    "dialog_loaded_msg": "模型加载成功 ({0})",
+    "dialog_error": "错误",
+    
+    "crash_title": "程序崩溃",
+    "crash_message": "发生未处理的异常，详情请查看 crash.log\n\n{0}",
+    
+    "dl_task_running": "下载任务进行中...",
+    "dl_init_process": "正在初始化下载进程...",
+    "dl_paused": "已暂停",
+    "dl_cancelled": "下载已取消",
+    "dl_sys_prefix": "[系统] {0}",
+    "dl_error_exit": "下载进程异常退出 (代码: {0})",
+    "dl_error_reason": "\n可能原因：缺少依赖库 (modelscope) 或网络连接失败。"
+}

@@ -2,19 +2,24 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                              QListWidget, QGroupBox, QComboBox, QProgressBar, QLabel)
 from PyQt6.QtCore import Qt
 from app.config import PRESET_MODELS
+from app.core.i18n import i18n
 
 class ChatSidebar(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumWidth(240)
         self.init_ui()
+        
+        # 初始刷新文本并连接信号
+        self.update_texts()
+        i18n.language_changed.connect(self.update_texts)
 
     def init_ui(self):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(10, 10, 10, 10)
         
         # 新建对话
-        self.btn_new_chat = QPushButton("+ 新建对话")
+        self.btn_new_chat = QPushButton()
         self.btn_new_chat.setObjectName("PrimaryBtn")
         self.btn_new_chat.setStyleSheet("""
             QPushButton { background-color: #5aa9ff; color: #000; border-radius: 6px; font-weight: bold; padding: 6px; }
@@ -28,21 +33,20 @@ class ChatSidebar(QWidget):
         layout.addWidget(self.chat_list, 1)
 
         # 下载区域
-        dl_group = QGroupBox("下载模型 (魔搭社区)")
+        self.dl_group = QGroupBox()
         dl_layout = QVBoxLayout()
         
         self.combo_repo = QComboBox()
         self.combo_repo.setEditable(True)
         self.combo_repo.addItems(PRESET_MODELS)
-        self.combo_repo.setPlaceholderText("选择或输入模型ID...")
         dl_layout.addWidget(self.combo_repo)
 
-        # 按钮行: 下载/暂停/取消
+        # 按钮行
         dl_btns = QHBoxLayout()
-        self.btn_download = QPushButton("下载")
-        self.btn_pause = QPushButton("暂停")
+        self.btn_download = QPushButton()
+        self.btn_pause = QPushButton()
         self.btn_pause.setVisible(False)
-        self.btn_stop = QPushButton("取消")
+        self.btn_stop = QPushButton()
         self.btn_stop.setObjectName("StopBtn")
         self.btn_stop.setVisible(False)
         
@@ -51,8 +55,8 @@ class ChatSidebar(QWidget):
         dl_btns.addWidget(self.btn_stop)
         dl_layout.addLayout(dl_btns)
 
-        # 按钮行: 清空缓存
-        self.btn_clear = QPushButton("清空下载缓存")
+        # 清空缓存
+        self.btn_clear = QPushButton()
         self.btn_clear.setStyleSheet("""
             QPushButton { background-color: #2d3748; color: #aaa; border: 1px solid #3e4f65; border-radius: 4px; padding: 4px; font-size: 12px; }
             QPushButton:hover { background-color: #3e4f65; color: #fff; }
@@ -64,27 +68,41 @@ class ChatSidebar(QWidget):
         self.dl_progress.setVisible(False)
         dl_layout.addWidget(self.dl_progress)
         
-        self.lbl_dl_status = QLabel("就绪")
+        self.lbl_dl_status = QLabel()
         self.lbl_dl_status.setStyleSheet("font-size: 11px; color: #888; margin-top:4px;")
         self.lbl_dl_status.setWordWrap(True)
         dl_layout.addWidget(self.lbl_dl_status)
         
-        dl_group.setLayout(dl_layout)
-        layout.addWidget(dl_group)
+        self.dl_group.setLayout(dl_layout)
+        layout.addWidget(self.dl_group)
 
         # 运行设置
-        run_group = QGroupBox("运行设置")
+        self.run_group = QGroupBox()
         run_layout = QVBoxLayout()
-        run_layout.addWidget(QLabel("设备:"))
+        
+        # === 语言选择 ===
+        self.lbl_lang = QLabel()
+        run_layout.addWidget(self.lbl_lang)
+        self.combo_lang = QComboBox()
+        # 手动添加支持的语言
+        self.combo_lang.addItem("English", "en_US")
+        self.combo_lang.addItem("简体中文", "zh_CN")
+        self.combo_lang.currentIndexChanged.connect(self.on_lang_switch)
+        run_layout.addWidget(self.combo_lang)
+        # ================
+
+        self.lbl_device = QLabel()
+        run_layout.addWidget(self.lbl_device)
         self.combo_device = QComboBox()
         self.combo_device.addItems(["AUTO", "NPU", "GPU", "CPU"])
         run_layout.addWidget(self.combo_device)
         
-        run_layout.addWidget(QLabel("本地模型:"))
+        self.lbl_local_model = QLabel()
+        run_layout.addWidget(self.lbl_local_model)
         self.combo_models = QComboBox()
         run_layout.addWidget(self.combo_models)
         
-        self.btn_load = QPushButton("加载模型")
+        self.btn_load = QPushButton()
         self.btn_load.setObjectName("PrimaryBtn")
         self.btn_load.setStyleSheet("""
             QPushButton { background-color: #5aa9ff; color: #000; border-radius: 6px; font-weight: bold; padding: 6px; }
@@ -93,5 +111,38 @@ class ChatSidebar(QWidget):
         """)
         run_layout.addWidget(self.btn_load)
         
-        run_group.setLayout(run_layout)
-        layout.addWidget(run_group)
+        self.run_group.setLayout(run_layout)
+        layout.addWidget(self.run_group)
+
+    def on_lang_switch(self):
+        code = self.combo_lang.currentData()
+        if code != i18n.current_lang:
+            i18n.load_language(code)
+
+    def update_texts(self):
+        """刷新界面文本"""
+        self.btn_new_chat.setText(i18n.t("btn_new_chat"))
+        
+        self.dl_group.setTitle(i18n.t("group_download"))
+        self.combo_repo.setPlaceholderText(i18n.t("placeholder_repo"))
+        self.btn_download.setText(i18n.t("btn_download"))
+        self.btn_pause.setText(i18n.t("btn_pause"))
+        self.btn_stop.setText(i18n.t("btn_cancel"))
+        self.btn_clear.setText(i18n.t("btn_clear_cache"))
+        
+        # 只在状态为空或"就绪"时重置，避免覆盖下载进度
+        if not self.lbl_dl_status.text() or self.lbl_dl_status.text() in [i18n.t("status_ready"), "Ready", "就绪"]:
+            self.lbl_dl_status.setText(i18n.t("status_ready"))
+
+        self.run_group.setTitle(i18n.t("group_run"))
+        self.lbl_lang.setText(i18n.t("label_language"))
+        self.lbl_device.setText(i18n.t("label_device"))
+        self.lbl_local_model.setText(i18n.t("label_model"))
+        self.btn_load.setText(i18n.t("btn_load_model"))
+
+        # 同步下拉框显示
+        idx = self.combo_lang.findData(i18n.current_lang)
+        if idx >= 0:
+            self.combo_lang.blockSignals(True)
+            self.combo_lang.setCurrentIndex(idx)
+            self.combo_lang.blockSignals(False)

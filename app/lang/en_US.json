@@ -1,0 +1,61 @@
+{
+    "app_title": "Idle NPU Waker",
+    
+    "btn_new_chat": "+ New Chat",
+    "group_download": "Download Model (ModelScope)",
+    "placeholder_repo": "Select or Enter Model ID...",
+    "btn_download": "Download",
+    "btn_pause": "Pause",
+    "btn_cancel": "Cancel",
+    "btn_clear_cache": "Clear Cache",
+    "status_ready": "Ready",
+    "status_downloading": "Downloading: {0}",
+    "status_cleaning": "Cleaning...",
+    "status_loading_model": "Loading: {0}",
+    "status_loaded": "✅ Loaded ({0})",
+    
+    "group_run": "Runtime Settings",
+    "label_device": "Device:",
+    "label_model": "Local Model:",
+    "label_language": "Language:",
+    "btn_load_model": "Load Model",
+    
+    "input_placeholder": "Type a message (Enter to send)...",
+    "btn_send": "Send",
+    "btn_stop": "Stop",
+    "default_chat_name": "New Chat",
+    
+    "msg_thinking": "Thinking...",
+    "think_status_running": "Deep Thinking...",
+    "think_status_done": "Thinking Process",
+    "think_cost_pattern": "({0:.1f}s elapsed)",
+    "think_duration_pattern": "({0:.1f}s)",
+    
+    "tip_load_model_first": "Please load a model first.",
+    
+    "menu_delete_chat": "Delete Chat",
+    
+    "dialog_confirm_delete": "Confirm Delete",
+    "dialog_delete_msg": "Are you sure you want to delete chat \"{0}\"?",
+    "dialog_confirm_clear": "Confirm Clear",
+    "dialog_clear_msg": "Are you sure you want to force clear the cache?\nThe program will try to unlock files if occupied.",
+    "dialog_success": "Success",
+    "dialog_cache_cleared": "Cache cleared successfully!",
+    "dialog_warning": "Warning",
+    "dialog_file_locked": "Some files are locked. Please restart the app and try again.",
+    "dialog_model_ready": "Model Ready:\n{0}",
+    "dialog_loaded_title": "Ready",
+    "dialog_loaded_msg": "Model loaded successfully ({0})",
+    "dialog_error": "Error",
+    
+    "crash_title": "Application Crash",
+    "crash_message": "An unhandled exception occurred. See crash.log for details.\n\n{0}",
+    
+    "dl_task_running": "Download task is running...",
+    "dl_init_process": "Initializing download process...",
+    "dl_paused": "Paused",
+    "dl_cancelled": "Download cancelled",
+    "dl_sys_prefix": "[System] {0}",
+    "dl_error_exit": "Download process exited abnormally (Code: {0})",
+    "dl_error_reason": "\nPossible reasons: Missing dependencies (modelscope) or network failure."
+}
