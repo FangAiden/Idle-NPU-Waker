@@ -1,0 +1,255 @@
+import re
+import html
+import time
+from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
+                             QPushButton, QApplication, QFrame, QSizePolicy)
+from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtGui import QIcon, QPixmap, QTransform, QDesktopServices
+from PyQt6.QtCore import QUrl
+from app.ui.resources import AI_AVATAR_SVG, USER_AVATAR_SVG, COPY_ICON_SVG, CHEVRON_ICON_SVG
+
+try:
+    import markdown
+    HAS_MARKDOWN = True
+except ImportError:
+    HAS_MARKDOWN = False
+
+class MessageBubble(QWidget):
+    def __init__(self, text, is_user=False, parent=None):
+        super().__init__(parent)
+        self.is_user = is_user
+        self.full_text = text
+        self.thinking_expanded = True
+        
+        self.think_start_time = None
+        self.think_duration = None
+        
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 5, 10, 5)
+        layout.setSpacing(12)
+
+        # 1. 头像
+        self.avatar_lbl = QLabel()
+        self.avatar_lbl.setFixedSize(36, 36)
+        pixmap = QPixmap()
+        if pixmap.loadFromData(USER_AVATAR_SVG if self.is_user else AI_AVATAR_SVG):
+            self.avatar_lbl.setPixmap(pixmap)
+        else:
+            color = '#5aa9ff' if self.is_user else '#10a37f'
+            self.avatar_lbl.setStyleSheet(f"background-color: {color}; border-radius: 18px;")
+        self.avatar_lbl.setScaledContents(True)
+        self.avatar_lbl.setAlignment(Qt.AlignmentFlag.AlignTop)
+
+        # 2. 内容容器
+        self.content_container = QWidget()
+        self.content_layout = QVBoxLayout(self.content_container)
+        self.content_layout.setContentsMargins(0, 0, 0, 0)
+        self.content_layout.setSpacing(4)
+
+        # === 深度思考标题 ===
+        self.btn_think_toggle = QPushButton("")
+        self.btn_think_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_think_toggle.setVisible(False)
+        self.btn_think_toggle.setStyleSheet("""
+            QPushButton {
+                background: transparent;
+                text-align: left;
+                color: #6b7280;
+                font-size: 12px;
+                border: none;
+                font-weight: bold;
+                padding: 4px 0;
+            }
+            QPushButton:hover { color: #9ca3af; }
+        """)
+        self.btn_think_toggle.setIconSize(QSize(16, 16))
+        self.btn_think_toggle.clicked.connect(self.toggle_think)
+        self.content_layout.addWidget(self.btn_think_toggle)
+
+        # === 深度思考内容 ===
+        self.think_frame = QFrame()
+        self.think_frame.setVisible(False)
+        self.think_frame.setStyleSheet("""
+            QFrame {
+                background-color: #1a1e24; 
+                border-left: 3px solid #4b5563;
+                border-radius: 4px;
+                margin-bottom: 8px;
+            }
+        """)
+        think_layout = QVBoxLayout(self.think_frame)
+        think_layout.setContentsMargins(10, 8, 10, 8)
+
+        self.think_lbl = QLabel()
+        self.think_lbl.setWordWrap(True)
+        self.think_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.think_lbl.setStyleSheet("color: #9ca3af; font-size: 13px; font-family: 'Segoe UI', sans-serif;")
+        think_layout.addWidget(self.think_lbl)
+        self.content_layout.addWidget(self.think_frame)
+
+        # === 正式回答 ===
+        self.content_lbl = QLabel()
+        self.content_lbl.setWordWrap(True)
+        self.content_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.content_lbl.setOpenExternalLinks(True)
+        # 处理链接点击
+        self.content_lbl.linkActivated.connect(self.open_link)
+        
+        bg_color = "#1e2842" if self.is_user else "#2d3748"
+        self.content_lbl.setStyleSheet(f"""
+            QLabel {{
+                background-color: {bg_color};
+                color: #ffffff;
+                border-radius: 12px;
+                padding: 12px;
+                font-size: 14px;
+                line-height: 1.5;
+            }}
+        """)
+        self.content_layout.addWidget(self.content_lbl)
+
+        # 复制按钮
+        self.btn_copy = QPushButton()
+        self.btn_copy.setFixedSize(24, 24)
+        self.btn_copy.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_copy.setStyleSheet("QPushButton { background: transparent; border: none; } QPushButton:hover { background-color: #3e4f65; border-radius: 4px; }")
+        cp_pix = QPixmap()
+        cp_pix.loadFromData(COPY_ICON_SVG)
+        self.btn_copy.setIcon(QIcon(cp_pix))
+        self.btn_copy.clicked.connect(self.copy_text)
+
+        # 布局
+        if self.is_user:
+            layout.addStretch()
+            layout.addWidget(self.btn_copy, alignment=Qt.AlignmentFlag.AlignBottom)
+            layout.addWidget(self.content_container)
+            layout.addWidget(self.avatar_lbl, alignment=Qt.AlignmentFlag.AlignTop)
+            self.content_container.setMaximumWidth(650)
+        else:
+            layout.addWidget(self.avatar_lbl, alignment=Qt.AlignmentFlag.AlignTop)
+            layout.addWidget(self.content_container)
+            layout.addWidget(self.btn_copy, alignment=Qt.AlignmentFlag.AlignBottom)
+            layout.addStretch()
+            self.content_container.setFixedWidth(750) 
+
+        self.update_display_text(self.full_text)
+        self.update_toggle_icon()
+
+    def open_link(self, url):
+        QDesktopServices.openUrl(QUrl(url))
+
+    def update_toggle_icon(self):
+        pix = QPixmap()
+        pix.loadFromData(CHEVRON_ICON_SVG)
+        if not self.thinking_expanded:
+            transform = QTransform().rotate(-90)
+            pix = pix.transformed(transform, Qt.TransformationMode.SmoothTransformation)
+        self.btn_think_toggle.setIcon(QIcon(pix))
+
+    def toggle_think(self):
+        self.thinking_expanded = not self.thinking_expanded
+        self.think_frame.setVisible(self.thinking_expanded)
+        self.update_toggle_icon()
+        self.update_status_text()
+
+    def update_status_text(self, is_thinking=False):
+        duration_str = ""
+        if self.think_duration is not None:
+            duration_str = f"（用时 {self.think_duration:.1f} 秒）"
+        elif self.think_start_time is not None:
+            elapsed = time.time() - self.think_start_time
+            duration_str = f"（{elapsed:.1f} 秒）"
+            
+        if is_thinking:
+            self.btn_think_toggle.setText(f" 深度思考中... {duration_str}")
+        else:
+            self.btn_think_toggle.setText(f" 已深度思考 {duration_str}")
+
+    def update_text(self, new_text):
+        self.full_text = new_text
+        self.update_display_text(new_text)
+
+    def update_display_text(self, text):
+        if not text: return
+        
+        if text == "思考中...":
+            self.content_lbl.setText(f"<i style='color:#888'>思考中...</i>")
+            self.btn_think_toggle.setVisible(False)
+            self.think_frame.setVisible(False)
+            return
+
+        # 解析 <think>
+        think_pattern = re.compile(r"<\s*think\s*>(.*?)(?:<\s*/\s*think\s*>|$)", re.DOTALL | re.IGNORECASE)
+        match = think_pattern.search(text)
+
+        think_content = ""
+        main_content = text
+        is_thinking = False
+
+        if match:
+            if self.think_start_time is None: self.think_start_time = time.time()
+            think_content = match.group(1).strip()
+            
+            if re.search(r"<\s*/\s*think\s*>", text, re.IGNORECASE):
+                main_content = think_pattern.sub("", text).strip()
+                if self.think_duration is None and self.think_start_time:
+                    self.think_duration = time.time() - self.think_start_time
+            else:
+                main_content = ""
+                is_thinking = True
+
+        # 更新思考部分 UI
+        if think_content:
+            self.btn_think_toggle.setVisible(True)
+            if self.thinking_expanded: self.think_frame.setVisible(True)
+            safe_think = html.escape(think_content).replace("\n", "<br>")
+            self.update_status_text(is_thinking)
+            if is_thinking: safe_think += " <span style='color:#5aa9ff'>▌</span>"
+            self.think_lbl.setText(safe_think)
+        else:
+            self.btn_think_toggle.setVisible(False)
+            self.think_frame.setVisible(False)
+
+        # 更新正文 UI
+        if main_content:
+            self.content_lbl.setVisible(True)
+            
+            if HAS_MARKDOWN:
+                # 转换 Markdown 为 HTML
+                # extensions 里的 fenced_code 支持 ``` 代码块
+                html_content = markdown.markdown(main_content, extensions=['fenced_code', 'nl2br'])
+                
+                style = """
+                <style>
+                pre { 
+                    background-color: #12151b; 
+                    color: #dcdfe4; 
+                    padding: 10px; 
+                    border-radius: 6px;
+                    border: 1px solid #2b323b;
+                    font-family: Consolas, monospace;
+                }
+                code { color: #dcdfe4; }
+                h1, h2, h3 { color: #5aa9ff; font-weight: bold; margin-top: 10px; }
+                strong { color: #f0f0f0; }
+                p { margin-bottom: 8px; }
+                a { color: #5aa9ff; text-decoration: none; }
+                </style>
+                """
+                
+                # 设置为富文本格式
+                self.content_lbl.setTextFormat(Qt.TextFormat.RichText)
+                self.content_lbl.setText(style + html_content)
+            else:
+                # 如果没安装 markdown 库，尝试使用 Qt 自带的简单 Markdown
+                self.content_lbl.setTextFormat(Qt.TextFormat.MarkdownText)
+                self.content_lbl.setText(main_content)
+                
+        else:
+            self.content_lbl.setVisible(False)
+            
+    def copy_text(self):
+        QApplication.clipboard().setText(self.full_text)

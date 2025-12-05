@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.download_temp/
+models/
+!models/.gitkeep
+build
+dist
+IdleNPUWaker.spec
+runtime.log

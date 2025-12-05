@@ -1,0 +1,7 @@
+fastapi
+uvicorn[standard]
+requests
+markdown
+huggingface_hub
+openvino-genai>=2025.1.0
+modelscope>=1.16.0 ; python_version>="3.8"
