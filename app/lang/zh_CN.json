@@ -57,5 +57,7 @@
     "dl_cancelled": "下载已取消",
     "dl_sys_prefix": "[系统] {0}",
     "dl_error_exit": "下载进程异常退出 (代码: {0})",
-    "dl_error_reason": "\n可能原因：缺少依赖库 (modelscope) 或网络连接失败。"
+    "dl_error_reason": "\n可能原因：缺少依赖库 (modelscope) 或网络连接失败。",
+    "label_stats": "生成统计:",
+    "stats_pattern": "{0} tokens · {1:.1f} t/s · {2:.1f} s"
 }

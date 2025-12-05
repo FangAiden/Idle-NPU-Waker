@@ -57,5 +57,7 @@
     "dl_cancelled": "Download cancelled",
     "dl_sys_prefix": "[System] {0}",
     "dl_error_exit": "Download process exited abnormally (Code: {0})",
-    "dl_error_reason": "\nPossible reasons: Missing dependencies (modelscope) or network failure."
+    "dl_error_reason": "\nPossible reasons: Missing dependencies (modelscope) or network failure.",
+    "label_stats": "Last Generation:",
+    "stats_pattern": "{0} tokens · {1:.1f} t/s · {2:.1f} s"
 }

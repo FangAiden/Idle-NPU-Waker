@@ -31,7 +31,6 @@ class ChatWindow(QMainWindow):
 
     def __init__(self):
         super().__init__()
-        # 窗口标题将在 update_texts 中设置
         self.resize(1200, 850)
         icon_pix = QPixmap()
         icon_pix.loadFromData(APP_ICON_SVG)
@@ -57,6 +56,10 @@ class ChatWindow(QMainWindow):
         self.sessions = {}
         self.current_session_id = None
         self.current_ai_bubble = None 
+        
+        # 实时统计相关变量
+        self.gen_start_time = 0
+        self.stream_token_count = 0
         
         self.setup_ui()
         self.scan_local_models()
@@ -131,19 +134,18 @@ class ChatWindow(QMainWindow):
         input_layout.setContentsMargins(20, 15, 20, 15)
         
         self.input_box = QLineEdit()
-        # setPlaceholderText 在 update_texts 中设置
         self.input_box.returnPressed.connect(self.do_send)
         self.input_box.setStyleSheet("QLineEdit { background-color: #0e1525; border: 1px solid #1e2842; border-radius: 8px; padding: 10px; color: #e6e8ee; font-size: 14px; } QLineEdit:focus { border: 1px solid #5aa9ff; }")
 
         self.btn_stack = QStackedWidget()
         self.btn_stack.setFixedSize(80, 40)
         
-        self.btn_send = QPushButton() # 文本在 update_texts 中设置
+        self.btn_send = QPushButton() 
         self.btn_send.setStyleSheet("QPushButton { background-color: #5aa9ff; color: #000; border-radius: 6px; font-weight: bold; font-size: 14px; } QPushButton:hover { background-color: #4a99ef; }")
         self.btn_send.clicked.connect(self.do_send)
         self.btn_stack.addWidget(self.btn_send)
         
-        self.btn_stop_gen = QPushButton() # 文本在 update_texts 中设置
+        self.btn_stop_gen = QPushButton() 
         self.btn_stop_gen.setStyleSheet("QPushButton { background-color: #f08a5d; color: #000; border-radius: 6px; font-weight: bold; font-size: 14px; } QPushButton:hover { background-color: #e07a4d; }")
         self.btn_stop_gen.clicked.connect(self.do_stop_gen)
         self.btn_stack.addWidget(self.btn_stop_gen)
@@ -219,7 +221,6 @@ class ChatWindow(QMainWindow):
 
     def create_new_chat(self):
         sid = str(uuid.uuid4())
-        # 使用配置中的默认名称
         default_name = i18n.t("default_chat_name", "New Chat")
         self.sessions[sid] = {"title": default_name, "history": []}
         item = QListWidgetItem(default_name)
@@ -356,13 +357,32 @@ class ChatWindow(QMainWindow):
         self.btn_stack.setCurrentIndex(1)
         self.current_ai_buffer = ""
         self.current_ai_bubble = self.add_bubble(i18n.t("msg_thinking"), is_user=False)
+        
         try:
             prompt = self.runtime.tokenizer.apply_chat_template(sess["history"], add_generation_prompt=True, tokenize=False)
         except: prompt = txt
+        
+        # === 实时统计初始化 ===
+        self.gen_start_time = time.time()
+        self.stream_token_count = 0
+        self.sidebar.set_stats("...")
+        
         self.sig_do_generate.emit(prompt, {"max_new_tokens": 1024})
         
     def on_token_received(self, text):
         self.current_ai_buffer += text
+        
+        # === 实时计算与更新 ===
+        self.stream_token_count += 1 # 估算值，OpenVINO Streamer 通常一次回调一个 Token
+        elapsed = time.time() - self.gen_start_time
+        
+        # 避免计算过于频繁导致闪烁，或除以零
+        if elapsed > 0.1:
+            tps = self.stream_token_count / elapsed
+            # 使用默认格式，以防 json 文件未更新
+            pattern = i18n.t("stats_pattern", "{0} tokens · {1:.1f} t/s · {2:.1f} s")
+            self.sidebar.set_stats(pattern.format(self.stream_token_count, tps, elapsed))
+
         if self.current_ai_bubble:
             self.current_ai_bubble.update_text(self.current_ai_buffer)
             self.scroll_to_bottom()
@@ -371,6 +391,31 @@ class ChatWindow(QMainWindow):
         self.sessions[self.current_session_id]["history"].append({"role": "assistant", "content": self.current_ai_buffer})
         self.current_ai_bubble = None
         self.btn_stack.setCurrentIndex(0)
+        
+        # === 生成结束后的精确计算 ===
+        try:
+            duration = time.time() - self.gen_start_time
+            token_count = 0
+            
+            # 使用 Tokenizer 进行精确统计
+            if self.runtime.tokenizer and self.current_ai_buffer:
+                encoded = self.runtime.tokenizer.encode(self.current_ai_buffer)
+                if hasattr(encoded, 'input_ids'):
+                    shape = encoded.input_ids.shape
+                    token_count = shape[1] if len(shape) > 1 else len(encoded.input_ids)
+            
+            # 如果 tokenizer 计算失败（例如网络模型），回退到流式计数
+            if token_count == 0:
+                token_count = self.stream_token_count
+
+            tps = token_count / duration if duration > 0.01 else 0
+            
+            pattern = i18n.t("stats_pattern", "{0} tokens · {1:.1f} t/s · {2:.1f} s")
+            self.sidebar.set_stats(pattern.format(token_count, tps, duration))
+            
+        except Exception as e:
+            print(f"Stats calculation error: {e}")
+            self.sidebar.set_stats("Error")
         
     def do_stop_gen(self): self.worker_ai.stop()
     

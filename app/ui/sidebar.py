@@ -110,6 +110,17 @@ class ChatSidebar(QWidget):
             QPushButton:disabled { background-color: #333; color: #777; }
         """)
         run_layout.addWidget(self.btn_load)
+
+        # === 统计信息显示区域 ===
+        self.lbl_stats_title = QLabel()
+        self.lbl_stats_title.setStyleSheet("color: #6b7280; font-size: 11px; margin-top: 8px; font-weight: bold;")
+        run_layout.addWidget(self.lbl_stats_title)
+
+        self.lbl_stats_val = QLabel("--")
+        self.lbl_stats_val.setStyleSheet("color: #22c55e; font-size: 12px; font-family: Consolas, monospace;")
+        self.lbl_stats_val.setWordWrap(True)
+        run_layout.addWidget(self.lbl_stats_val)
+        # ===========================
         
         self.run_group.setLayout(run_layout)
         layout.addWidget(self.run_group)
@@ -139,6 +150,9 @@ class ChatSidebar(QWidget):
         self.lbl_device.setText(i18n.t("label_device"))
         self.lbl_local_model.setText(i18n.t("label_model"))
         self.btn_load.setText(i18n.t("btn_load_model"))
+        
+        # 刷新统计
+        self.lbl_stats_title.setText(i18n.t("label_stats"))
 
         # 同步下拉框显示
         idx = self.combo_lang.findData(i18n.current_lang)
@@ -146,3 +160,7 @@ class ChatSidebar(QWidget):
             self.combo_lang.blockSignals(True)
             self.combo_lang.setCurrentIndex(idx)
             self.combo_lang.blockSignals(False)
+
+    def set_stats(self, text):
+        """设置统计信息文本"""
+        self.lbl_stats_val.setText(text)
