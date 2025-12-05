@@ -5,7 +5,7 @@
 **Idle NPU Waker** is a modern local AI chat client built with **Python** and **PyQt6**.
 The application deeply integrates the **Intel OpenVINO™ GenAI** toolchain, optimized for AI PCs equipped with **NPUs (Neural Processing Units)** such as Intel Core Ultra (Meteor Lake / Lunar Lake), delivering low‑latency, low‑power, fully offline large‑model inference.
 
-> **✨ New Feature:** Fully adapted for reasoning models (e.g., DeepSeek‑R1), supporting Chain‑of‑Thought (CoT) visualization with a collapsible Deep Thinking UI.
+> **New Feature:** Fully adapted for reasoning models (e.g., DeepSeek‑R1), supporting Chain‑of‑Thought (CoT) visualization with a collapsible Deep Thinking UI.
 
 ![Application Screenshot](assets/screenshot1.png)
 
@@ -13,21 +13,21 @@ The application deeply integrates the **Intel OpenVINO™ GenAI** toolchain, opt
 
 ## Core Features
 
-### 🚀 Extreme Local Acceleration & Stability
+### Extreme Local Acceleration & Stability
 - **Multi‑Device Inference:** Native support for Intel **NPU**, iGPU (Intel Arc), and CPU.
 - **Smart Fallback Mechanism:** Automatically falls back to CPU if the selected device fails to initialize.
 - **Safe Memory Management:** Deep cleanup and garbage collection when switching models to prevent crashes caused by leftover memory.
 
-### 🧠 Deep Thinking UI
+### Deep Thinking UI
 - **Chain‑of‑Thought Visualization:** Parses `<think>` tags from model output and separates *thinking* and *final answer*.
 - **Interactive Folding:** Thinking content can be expanded/collapsed and displays inference time.
 
-### 📦 One‑Stop Model Management
+### One‑Stop Model Management
 - **Independent Download Process:** Runs in its own process with pause/cancel/resume and zero UI freezing.
 - **ModelScope Integration:** Automatically handles file structures—ready to use immediately after download.
 - **Smart Scanning:** Recursively detects valid OpenVINO models via `openvino_model.xml` and tokenizer structure.
 
-### 🎨 Modern Interaction
+### Modern Interaction
 - **Streaming Typewriter Effect** for real‑time token rendering.
 - **Markdown Rendering** with code highlight support.
 - **Multi‑Session Management** including history saving and right‑click deletion.
