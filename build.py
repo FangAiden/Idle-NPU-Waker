@@ -21,8 +21,7 @@ COLLECT_PACKAGES = [
     "openvino",
     "openvino_tokenizers",
     "modelscope",
-    "markdown",
-    "huggingface_hub"
+    "markdown"
 ]
 
 # 需要添加的数据文件 (格式: 源路径;目标路径)
