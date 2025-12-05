@@ -20,7 +20,6 @@ def log_to_file(msg):
 def _sanitize(name: str) -> str:
     return re.sub(r"[^\w\-.]+", "_", name)
 
-# 初始化 OpenVINO Core
 try:
     import openvino as ov
     _core = ov.Core()
@@ -44,7 +43,6 @@ class RuntimeState:
         """安全卸载模型，防止显存残留导致闪退"""
         log_to_file("Unloading model...")
         
-        # 1. 显式删除对象
         if self.pipe is not None:
             try: del self.pipe
             except: pass
@@ -55,11 +53,9 @@ class RuntimeState:
         self.pipe = None
         self.tokenizer = None
         
-        # 2. 强制垃圾回收 (执行两次以处理循环引用)
         gc.collect()
         gc.collect()
         
-        # 3. 给 NPU/GPU 驱动一点时间来释放句柄
         time.sleep(0.5)
         log_to_file("Model unloaded and memory cleared.")
 
@@ -83,7 +79,6 @@ class RuntimeState:
 
         log_to_file(f"Request load: dir={want_dir}, device={want_device}")
 
-        # 检查是否需要重载
         need_reload = (
             (want_source != self.model_source) or
             ((want_dir or None) != (self.model_dir or None)) or
@@ -95,7 +90,6 @@ class RuntimeState:
             log_to_file("Pipeline reusing existing instance.")
             return (str(self.model_path), self.device)
 
-        # 卸载旧模型
         self.unload()
 
         if want_source == "local":
@@ -121,7 +115,6 @@ class RuntimeState:
         except Exception as e:
             log_to_file(f"ERROR: Pipeline init failed on {dev}: {e}")
             log_to_file("Attempting fallback to CPU...")
-            # 如果 NPU/GPU 失败，回退到 CPU
             dev = "CPU"
             pipe = ov_genai.LLMPipeline(str_path, device=dev)
             log_to_file("Fallback to CPU successful.")

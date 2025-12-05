@@ -59,5 +59,29 @@
     "dl_error_exit": "Download process exited abnormally (Code: {0})",
     "dl_error_reason": "\nPossible reasons: Missing dependencies (modelscope) or network failure.",
     "label_stats": "Last Generation:",
-    "stats_pattern": "{0} tokens · {1:.1f} t/s · {2:.1f} s"
+    "stats_pattern": "{0} tokens · {1:.1f} t/s · {2:.1f} s",
+
+    "group_model_params": "Model Parameters",
+    "btn_settings": "Settings",
+    "btn_back_chat": "Back to Chat",
+    
+    "grp_generation": "Generation Control",
+    "grp_context": "Context & Dialog",
+    "grp_advanced": "Advanced Settings",
+
+    "conf_max_tokens": "Max Tokens",
+    "conf_temp": "Temperature",
+    "conf_top_p": "Top-P Sampling",
+    "conf_top_k": "Top-K Sampling",
+    "conf_rep_penalty": "Repetition Penalty",
+    "conf_do_sample": "Enable Sampling",
+    
+    "conf_history_turns": "History Turns",
+    "conf_sys_prompt": "System Prompt",
+    
+    "conf_add_gen_prompt": "Add Generation Prompt",
+    "conf_enable_thinking": "Enable Deep Thinking",
+    "conf_skip_special": "Skip Special Tokens",
+    
+    "opt_enabled": "Enabled"
 }

@@ -3,13 +3,10 @@ import sys
 from pathlib import Path
 
 if getattr(sys, 'frozen', False):
-    # 打包环境
     ROOT_DIR = Path(sys.executable).parent.resolve()
 else:
-    # 开发环境
     ROOT_DIR = Path(__file__).parent.parent.resolve()
 
-# 目录配置
 MODELS_DIR = ROOT_DIR / "models"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -17,23 +14,77 @@ DOWNLOAD_CACHE_DIR = ROOT_DIR / ".download_temp"
 DOWNLOAD_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_CONFIG = {
-    "max_history_turns": 8,
-    "max_new_tokens": 512,
-    "temperature": 0.8,
+    "max_new_tokens": 1024,
+    "temperature": 0.7,
     "top_p": 0.9,
     "top_k": 40,
+    "repetition_penalty": 1.1,
     "do_sample": True,
+    "system_prompt": "You are a helpful AI assistant.",
+    "max_history_turns": 10,
+    "add_generation_prompt": True,
+    "enable_thinking": True,
+    "skip_special_tokens": True
 }
 
-# 预设模型列表
-PRESET_MODELS = [
-    "OpenVINO/Qwen3-8B-int4-cw-ov",
-    "OpenVINO/DeepSeek-R1-Distill-Qwen-1.5B-int4-cw-ov",
-    "OpenVINO/DeepSeek-R1-Distill-Qwen-7B-int4-cw-ov",
-    "OpenVINO/Phi-3.5-mini-instruct-int4-cw-ov",
-    "OpenVINO/Mistral-7B-Instruct-v0.2-int4-cw-ov",
-    "OpenVINO/Phi-3-mini-4k-instruct-int4-cw-ov",
-    "OpenVINO/Mistral-7B-Instruct-v0.3-int4-cw-ov",
-    "OpenVINO/gpt-j-6b-int4-cw-ov",
-    "OpenVINO/falcon-7b-instruct-int4-cw-ov"
+CONFIG_GROUPS = [
+    {
+        "title_key": "grp_generation",
+        "options": {
+            "max_new_tokens": {
+                "type": "int", "min": 128, "max": 8192, "step": 128, "default": 1024,
+                "label_key": "conf_max_tokens", "widget": "slider"
+            },
+            "temperature": {
+                "type": "float", "min": 0.0, "max": 2.0, "step": 0.1, "default": 0.7,
+                "label_key": "conf_temp", "widget": "slider"
+            },
+            "top_p": {
+                "type": "float", "min": 0.0, "max": 1.0, "step": 0.05, "default": 0.9,
+                "label_key": "conf_top_p", "widget": "slider"
+            },
+            "top_k": {
+                "type": "int", "min": 1, "max": 100, "step": 1, "default": 40,
+                "label_key": "conf_top_k", "widget": "spin"
+            },
+            "repetition_penalty": {
+                "type": "float", "min": 1.0, "max": 2.0, "step": 0.1, "default": 1.1,
+                "label_key": "conf_rep_penalty", "widget": "spin"
+            },
+            "do_sample": {
+                "type": "bool", "default": True,
+                "label_key": "conf_do_sample", "widget": "checkbox"
+            }
+        }
+    },
+    {
+        "title_key": "grp_context",
+        "options": {
+            "max_history_turns": {
+                "type": "int", "min": 0, "max": 50, "step": 1, "default": 10,
+                "label_key": "conf_history_turns", "widget": "slider"
+            },
+            "system_prompt": {
+                "type": "str", "default": "You are a helpful AI assistant.",
+                "label_key": "conf_sys_prompt", "widget": "textarea"
+            }
+        }
+    },
+    {
+        "title_key": "grp_advanced",
+        "options": {
+            "enable_thinking": {
+                "type": "bool", "default": True,
+                "label_key": "conf_enable_thinking", "widget": "checkbox"
+            },
+            "add_generation_prompt": {
+                "type": "bool", "default": True,
+                "label_key": "conf_add_gen_prompt", "widget": "checkbox"
+            },
+            "skip_special_tokens": {
+                "type": "bool", "default": True,
+                "label_key": "conf_skip_special", "widget": "checkbox"
+            }
+        }
+    }
 ]

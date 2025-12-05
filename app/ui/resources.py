@@ -1,4 +1,3 @@
-# 应用图标
 APP_ICON_SVG = b"""
 <svg width="256" height="256" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg">
 <defs>
@@ -26,7 +25,6 @@ APP_ICON_SVG = b"""
 </svg>
 """
 
-# AI 头像
 AI_AVATAR_SVG = b"""
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
   <defs>
@@ -43,7 +41,6 @@ AI_AVATAR_SVG = b"""
 </svg>
 """
 
-# 用户头像
 USER_AVATAR_SVG = b"""
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
   <circle cx="12" cy="12" r="12" fill="#4b5563"/>
@@ -51,7 +48,6 @@ USER_AVATAR_SVG = b"""
 </svg>
 """
 
-# 复制图标
 COPY_ICON_SVG = b"""
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
   <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -59,7 +55,6 @@ COPY_ICON_SVG = b"""
 </svg>
 """
 
-# 折叠箭头图标
 CHEVRON_ICON_SVG = b"""
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#6b7280" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
   <polyline points="6 9 12 15 18 9"></polyline>

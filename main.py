@@ -41,7 +41,6 @@ def main():
     except Exception:
         pass
 
-    # 处理独立下载进程的参数
     if len(sys.argv) > 1 and sys.argv[1] == "--worker-download":
         from app.core.download_script import run_download_task
         run_download_task(sys.argv[2:])

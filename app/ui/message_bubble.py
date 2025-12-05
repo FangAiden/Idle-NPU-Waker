@@ -35,7 +35,6 @@ class MessageBubble(QWidget):
         layout.setContentsMargins(10, 5, 10, 5)
         layout.setSpacing(12)
 
-        # 1. 头像
         self.avatar_lbl = QLabel()
         self.avatar_lbl.setFixedSize(36, 36)
         pixmap = QPixmap()
@@ -47,13 +46,11 @@ class MessageBubble(QWidget):
         self.avatar_lbl.setScaledContents(True)
         self.avatar_lbl.setAlignment(Qt.AlignmentFlag.AlignTop)
 
-        # 2. 内容容器
         self.content_container = QWidget()
         self.content_layout = QVBoxLayout(self.content_container)
         self.content_layout.setContentsMargins(0, 0, 0, 0)
         self.content_layout.setSpacing(4)
 
-        # === 深度思考标题 ===
         self.btn_think_toggle = QPushButton("")
         self.btn_think_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_think_toggle.setVisible(False)
@@ -73,7 +70,6 @@ class MessageBubble(QWidget):
         self.btn_think_toggle.clicked.connect(self.toggle_think)
         self.content_layout.addWidget(self.btn_think_toggle)
 
-        # === 深度思考内容 ===
         self.think_frame = QFrame()
         self.think_frame.setVisible(False)
         self.think_frame.setStyleSheet("""
@@ -94,7 +90,6 @@ class MessageBubble(QWidget):
         think_layout.addWidget(self.think_lbl)
         self.content_layout.addWidget(self.think_frame)
 
-        # === 正式回答 ===
         self.content_lbl = QLabel()
         self.content_lbl.setWordWrap(True)
         self.content_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
@@ -114,7 +109,6 @@ class MessageBubble(QWidget):
         """)
         self.content_layout.addWidget(self.content_lbl)
 
-        # 复制按钮
         self.btn_copy = QPushButton()
         self.btn_copy.setFixedSize(24, 24)
         self.btn_copy.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -124,7 +118,6 @@ class MessageBubble(QWidget):
         self.btn_copy.setIcon(QIcon(cp_pix))
         self.btn_copy.clicked.connect(self.copy_text)
 
-        # 布局
         if self.is_user:
             layout.addStretch()
             layout.addWidget(self.btn_copy, alignment=Qt.AlignmentFlag.AlignBottom)
@@ -160,14 +153,9 @@ class MessageBubble(QWidget):
 
     def refresh_ui_text(self):
         """当语言改变时被调用"""
-        # 如果是"思考中..."的占位符状态，刷新占位符文本
-        # 注意：这里需要一种健壮的方式判断是否处于占位状态，
-        # 简单起见，如果 full_text 匹配某种已知的"思考中"文本，或者 btn_think_toggle 不可见且 full_text 较短
         if not self.btn_think_toggle.isVisible() and len(self.full_text) < 20: 
-             # 重新渲染一遍，update_display_text 内部会处理 "msg_thinking"
              self.update_display_text(self.full_text)
         
-        # 刷新思考状态栏文字
         if self.btn_think_toggle.isVisible():
             self.update_status_text(self.is_currently_thinking)
 
@@ -203,7 +191,6 @@ class MessageBubble(QWidget):
             self.think_frame.setVisible(False)
             return
 
-        # 解析 <think>
         think_pattern = re.compile(r"<\s*think\s*>(.*?)(?:<\s*/\s*think\s*>|$)", re.DOTALL | re.IGNORECASE)
         match = think_pattern.search(text)
 

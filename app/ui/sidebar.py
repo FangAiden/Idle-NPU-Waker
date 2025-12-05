@@ -1,166 +1,334 @@
+from pathlib import Path
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
-                             QListWidget, QGroupBox, QComboBox, QProgressBar, QLabel)
-from PyQt6.QtCore import Qt
-from app.config import PRESET_MODELS
+                             QListWidget, QGroupBox, QComboBox, QProgressBar, QLabel,
+                             QStackedWidget, QFrame, QMessageBox, QListWidgetItem, QSizePolicy)
+from PyQt6.QtCore import Qt, pyqtSignal, QFileSystemWatcher
+from app.config import MODELS_DIR, DOWNLOAD_CACHE_DIR
+from app.model_configs import PRESET_MODELS
 from app.core.i18n import i18n
+from app.ui.settings_panel import ModelSettingsPanel
+from app.core.downloader import DownloadManager
+from app.utils.scanner import scan_dirs
+from app.utils.styles import (
+    STYLE_BTN_PRIMARY, STYLE_BTN_SECONDARY, STYLE_BTN_DANGER_DARK,
+    STYLE_BTN_GHOST, STYLE_BTN_LINK, STYLE_LIST_WIDGET, STYLE_GROUP_BOX,
+    STYLE_COMBOBOX, STYLE_LABEL_NORMAL, STYLE_PROGRESS_BAR
+)
+import shutil
+import os
+import stat
 
 class ChatSidebar(QWidget):
+    sig_model_load_requested = pyqtSignal(str, str, str, str)
+    sig_session_switch = pyqtSignal(str)
+    sig_session_delete = pyqtSignal(str)
+    sig_new_chat = pyqtSignal()
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setMinimumWidth(240)
+        self.setMinimumWidth(280)
+        self.dl_manager = DownloadManager()
+        self.fs_watcher = QFileSystemWatcher()
+        self._setup_internal_logic()
         self.init_ui()
-        
-        # 初始刷新文本并连接信号
+        self.scan_local_models()
         self.update_texts()
         i18n.language_changed.connect(self.update_texts)
 
-    def init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
+    def _setup_internal_logic(self):
+        self.dl_manager.signal_progress.connect(self._on_dl_progress)
+        self.dl_manager.signal_finished.connect(self._on_dl_finished)
+        self.dl_manager.signal_log.connect(self._on_dl_log)
+        self.dl_manager.signal_error.connect(self._on_dl_error)
+        self.dl_manager.signal_process_state.connect(self._on_dl_state_change)
         
-        # 新建对话
+        if not MODELS_DIR.exists():
+            MODELS_DIR.mkdir(parents=True, exist_ok=True)
+        self.fs_watcher.addPath(str(MODELS_DIR))
+        self.fs_watcher.directoryChanged.connect(self.scan_local_models)
+
+    def init_ui(self):
+        main_layout = QVBoxLayout(self)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)
+
+        self.stack = QStackedWidget()
+        main_layout.addWidget(self.stack, 1)
+
+        self.page_chat = QWidget()
+        layout_chat = QVBoxLayout(self.page_chat)
+        layout_chat.setContentsMargins(10, 10, 10, 10)
+        layout_chat.setSpacing(10)
+        
         self.btn_new_chat = QPushButton()
         self.btn_new_chat.setObjectName("PrimaryBtn")
-        self.btn_new_chat.setStyleSheet("""
-            QPushButton { background-color: #5aa9ff; color: #000; border-radius: 6px; font-weight: bold; padding: 6px; }
-            QPushButton:hover { background-color: #4a99ef; }
-        """)
-        layout.addWidget(self.btn_new_chat)
-
-        # 聊天列表
+        self.btn_new_chat.clicked.connect(self.sig_new_chat.emit)
+        self.btn_new_chat.setStyleSheet(STYLE_BTN_PRIMARY)
+        layout_chat.addWidget(self.btn_new_chat)
+        
         self.chat_list = QListWidget()
         self.chat_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        layout.addWidget(self.chat_list, 1)
+        self.chat_list.itemClicked.connect(lambda item: self.sig_session_switch.emit(item.data(Qt.ItemDataRole.UserRole)))
+        self.chat_list.setStyleSheet(STYLE_LIST_WIDGET)
+        layout_chat.addWidget(self.chat_list, 1)
+        
+        self.create_basic_controls(layout_chat)
+        self.stack.addWidget(self.page_chat)
 
-        # 下载区域
+        self.settings_panel = ModelSettingsPanel()
+        self.stack.addWidget(self.settings_panel)
+
+        bottom_bar = QFrame()
+        bottom_bar.setStyleSheet("background-color: #0b0f19; border-top: 1px solid #1f2937;")
+        bottom_layout = QHBoxLayout(bottom_bar)
+        bottom_layout.setContentsMargins(10, 8, 10, 8)
+        bottom_layout.setSpacing(10)
+        
+        self.btn_toggle_view = QPushButton()
+        self.btn_toggle_view.setCheckable(True)
+        self.btn_toggle_view.clicked.connect(self.on_toggle_view)
+        self.btn_toggle_view.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.btn_toggle_view.setStyleSheet(STYLE_BTN_GHOST)
+        
+        self.lbl_stats_val = QLabel("--")
+        self.lbl_stats_val.setStyleSheet("color: #6b7280; font-size: 11px; font-family: Consolas, monospace;")
+        self.lbl_stats_val.setWordWrap(False)
+        self.lbl_stats_val.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.lbl_stats_val.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+
+        bottom_layout.addWidget(self.lbl_stats_val, 55)
+        bottom_layout.addWidget(self.btn_toggle_view, 45)
+        
+        main_layout.addWidget(bottom_bar)
+
+    def create_basic_controls(self, layout):
         self.dl_group = QGroupBox()
+        self.dl_group.setStyleSheet(STYLE_GROUP_BOX)
         dl_layout = QVBoxLayout()
+        dl_layout.setSpacing(8)
         
         self.combo_repo = QComboBox()
         self.combo_repo.setEditable(True)
         self.combo_repo.addItems(PRESET_MODELS)
+        self.combo_repo.setStyleSheet(STYLE_COMBOBOX)
         dl_layout.addWidget(self.combo_repo)
 
-        # 按钮行
         dl_btns = QHBoxLayout()
         self.btn_download = QPushButton()
+        self.btn_download.clicked.connect(self.start_download)
+        self.btn_download.setStyleSheet(STYLE_BTN_SECONDARY)
+        
         self.btn_pause = QPushButton()
+        self.btn_pause.clicked.connect(self.dl_manager.pause_download)
         self.btn_pause.setVisible(False)
+        self.btn_pause.setStyleSheet(STYLE_BTN_SECONDARY)
+        
         self.btn_stop = QPushButton()
         self.btn_stop.setObjectName("StopBtn")
+        self.btn_stop.clicked.connect(self.dl_manager.stop_download)
         self.btn_stop.setVisible(False)
-        
+        self.btn_stop.setStyleSheet(STYLE_BTN_DANGER_DARK)
+
         dl_btns.addWidget(self.btn_download)
         dl_btns.addWidget(self.btn_pause)
         dl_btns.addWidget(self.btn_stop)
         dl_layout.addLayout(dl_btns)
 
-        # 清空缓存
         self.btn_clear = QPushButton()
-        self.btn_clear.setStyleSheet("""
-            QPushButton { background-color: #2d3748; color: #aaa; border: 1px solid #3e4f65; border-radius: 4px; padding: 4px; font-size: 12px; }
-            QPushButton:hover { background-color: #3e4f65; color: #fff; }
-        """)
-        dl_layout.addWidget(self.btn_clear)
+        self.btn_clear.clicked.connect(self.clear_cache)
+        self.btn_clear.setStyleSheet(STYLE_BTN_LINK)
+        dl_layout.addWidget(self.btn_clear, alignment=Qt.AlignmentFlag.AlignRight)
 
         self.dl_progress = QProgressBar()
-        self.dl_progress.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.dl_progress.setVisible(False)
+        self.dl_progress.setFixedHeight(12)
+        self.dl_progress.setStyleSheet(STYLE_PROGRESS_BAR)
         dl_layout.addWidget(self.dl_progress)
         
         self.lbl_dl_status = QLabel()
-        self.lbl_dl_status.setStyleSheet("font-size: 11px; color: #888; margin-top:4px;")
+        self.lbl_dl_status.setStyleSheet("font-size: 11px; color: #6b7280;")
         self.lbl_dl_status.setWordWrap(True)
         dl_layout.addWidget(self.lbl_dl_status)
         
         self.dl_group.setLayout(dl_layout)
         layout.addWidget(self.dl_group)
 
-        # 运行设置
         self.run_group = QGroupBox()
+        self.run_group.setStyleSheet(STYLE_GROUP_BOX)
         run_layout = QVBoxLayout()
+        run_layout.setSpacing(10)
         
-        # === 语言选择 ===
         self.lbl_lang = QLabel()
+        self.lbl_lang.setStyleSheet(STYLE_LABEL_NORMAL)
         run_layout.addWidget(self.lbl_lang)
         self.combo_lang = QComboBox()
-        # 手动添加支持的语言
         self.combo_lang.addItem("English", "en_US")
         self.combo_lang.addItem("简体中文", "zh_CN")
+        self.combo_lang.setStyleSheet(STYLE_COMBOBOX)
         self.combo_lang.currentIndexChanged.connect(self.on_lang_switch)
         run_layout.addWidget(self.combo_lang)
-        # ================
 
         self.lbl_device = QLabel()
+        self.lbl_device.setStyleSheet(STYLE_LABEL_NORMAL)
         run_layout.addWidget(self.lbl_device)
         self.combo_device = QComboBox()
         self.combo_device.addItems(["AUTO", "NPU", "GPU", "CPU"])
+        self.combo_device.setStyleSheet(STYLE_COMBOBOX)
         run_layout.addWidget(self.combo_device)
         
         self.lbl_local_model = QLabel()
+        self.lbl_local_model.setStyleSheet(STYLE_LABEL_NORMAL)
         run_layout.addWidget(self.lbl_local_model)
         self.combo_models = QComboBox()
+        self.combo_models.setStyleSheet(STYLE_COMBOBOX)
+        self.combo_models.currentIndexChanged.connect(self.on_model_changed)
         run_layout.addWidget(self.combo_models)
         
         self.btn_load = QPushButton()
         self.btn_load.setObjectName("PrimaryBtn")
-        self.btn_load.setStyleSheet("""
-            QPushButton { background-color: #5aa9ff; color: #000; border-radius: 6px; font-weight: bold; padding: 6px; }
-            QPushButton:hover { background-color: #4a99ef; }
-            QPushButton:disabled { background-color: #333; color: #777; }
-        """)
+        self.btn_load.clicked.connect(self.request_load_model)
+        self.btn_load.setStyleSheet(STYLE_BTN_PRIMARY + "QPushButton { margin-top: 5px; }")
         run_layout.addWidget(self.btn_load)
-
-        # === 统计信息显示区域 ===
-        self.lbl_stats_title = QLabel()
-        self.lbl_stats_title.setStyleSheet("color: #6b7280; font-size: 11px; margin-top: 8px; font-weight: bold;")
-        run_layout.addWidget(self.lbl_stats_title)
-
-        self.lbl_stats_val = QLabel("--")
-        self.lbl_stats_val.setStyleSheet("color: #22c55e; font-size: 12px; font-family: Consolas, monospace;")
-        self.lbl_stats_val.setWordWrap(True)
-        run_layout.addWidget(self.lbl_stats_val)
-        # ===========================
         
         self.run_group.setLayout(run_layout)
         layout.addWidget(self.run_group)
+
+    def scan_local_models(self):
+        curr = self.combo_models.currentText()
+        models = scan_dirs([MODELS_DIR])
+        self.combo_models.blockSignals(True)
+        self.combo_models.clear()
+        for m in models: self.combo_models.addItem(f"{m['name']}", m['path'])
+        
+        idx = self.combo_models.findText(curr)
+        if idx >= 0: self.combo_models.setCurrentIndex(idx)
+        elif self.combo_models.count() > 0: self.combo_models.setCurrentIndex(0)
+        self.combo_models.blockSignals(False)
+        self.on_model_changed()
+
+    def start_download(self):
+        rid = self.combo_repo.currentText().strip()
+        if rid: self.dl_manager.start_download(rid)
+
+    def _on_dl_state_change(self, running):
+        self.btn_download.setVisible(not running)
+        self.btn_pause.setVisible(running)
+        self.btn_stop.setVisible(running)
+        self.btn_clear.setEnabled(not running)
+        self.combo_repo.setEnabled(not running)
+        self.dl_progress.setVisible(running or self.dl_progress.value()>0)
+        if running:
+            self.dl_progress.setFormat("...")
+            self.dl_progress.setRange(0, 0)
+
+    def _on_dl_progress(self, f, p):
+        self.dl_progress.setRange(0, 100)
+        self.dl_progress.setValue(p)
+        self.dl_progress.setFormat(f"{p}%")
+        self.lbl_dl_status.setText(i18n.t("status_downloading").format(f))
+
+    def _on_dl_finished(self, p):
+        self.lbl_dl_status.setText(i18n.t("status_ready"))
+        self.scan_local_models()
+        self.combo_models.setCurrentIndex(self.combo_models.findText(Path(p).name))
+        self.dl_progress.setValue(100)
+        QMessageBox.information(self, i18n.t("dialog_success"), i18n.t("dialog_model_ready").format(Path(p).name))
+
+    def _on_dl_log(self, m): self.lbl_dl_status.setText(m)
+    def _on_dl_error(self, e): 
+        self.lbl_dl_status.setText(f"❌ {e}")
+        self.dl_progress.setVisible(False)
+
+    def clear_cache(self):
+        self.dl_manager.stop_download()
+        reply = QMessageBox.question(self, i18n.t("dialog_confirm_clear"), i18n.t("dialog_clear_msg"),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, QMessageBox.StandardButton.No)
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.lbl_dl_status.setText(i18n.t("status_cleaning"))
+            QApplication.processEvents()
+            def on_rm_error(func, path, exc_info):
+                os.chmod(path, stat.S_IWRITE)
+                try: func(path)
+                except: pass 
+            if DOWNLOAD_CACHE_DIR.exists():
+                shutil.rmtree(DOWNLOAD_CACHE_DIR, onerror=on_rm_error)
+            DOWNLOAD_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            QMessageBox.information(self, i18n.t("dialog_success"), i18n.t("dialog_cache_cleared"))
+            self.lbl_dl_status.setText(i18n.t("status_ready"))
+            self.dl_progress.setValue(0)
+
+    def request_load_model(self):
+        p = self.combo_models.currentData()
+        d = self.combo_device.currentText()
+        if p:
+            self.lbl_dl_status.setText(i18n.t("status_loading_model").format(Path(p).name))
+            self.btn_load.setEnabled(False)
+            self.sig_model_load_requested.emit("local", "", p, d)
+
+    def on_model_load_result(self, success, msg):
+        self.btn_load.setEnabled(True)
+        if success:
+            self.lbl_dl_status.setText(i18n.t("status_loaded").format(msg))
+        else:
+            self.lbl_dl_status.setText("Error")
+
+    def add_session_item(self, sid, title):
+        item = QListWidgetItem(title)
+        item.setData(Qt.ItemDataRole.UserRole, sid)
+        self.chat_list.insertItem(0, item)
+        self.chat_list.setCurrentItem(item)
+
+    def update_current_session_title(self, title):
+        if self.chat_list.currentItem():
+            self.chat_list.currentItem().setText(title)
+
+    def shutdown(self):
+        self.dl_manager.stop_download()
+
+    def on_model_changed(self):
+        txt = self.combo_models.currentText()
+        if hasattr(self, 'settings_panel'):
+            self.settings_panel.apply_preset(txt)
+
+    def get_current_config(self):
+        if hasattr(self, 'settings_panel'):
+            return self.settings_panel.get_config()
+        return {}
+
+    def on_toggle_view(self, checked):
+        self.stack.setCurrentIndex(1 if checked else 0)
+        self.update_texts()
 
     def on_lang_switch(self):
         code = self.combo_lang.currentData()
         if code != i18n.current_lang:
             i18n.load_language(code)
 
+    def set_stats(self, text):
+        self.lbl_stats_val.setText(text)
+
     def update_texts(self):
-        """刷新界面文本"""
         self.btn_new_chat.setText(i18n.t("btn_new_chat"))
-        
         self.dl_group.setTitle(i18n.t("group_download"))
         self.combo_repo.setPlaceholderText(i18n.t("placeholder_repo"))
         self.btn_download.setText(i18n.t("btn_download"))
         self.btn_pause.setText(i18n.t("btn_pause"))
         self.btn_stop.setText(i18n.t("btn_cancel"))
         self.btn_clear.setText(i18n.t("btn_clear_cache"))
-        
-        # 只在状态为空或"就绪"时重置，避免覆盖下载进度
         if not self.lbl_dl_status.text() or self.lbl_dl_status.text() in [i18n.t("status_ready"), "Ready", "就绪"]:
             self.lbl_dl_status.setText(i18n.t("status_ready"))
-
         self.run_group.setTitle(i18n.t("group_run"))
         self.lbl_lang.setText(i18n.t("label_language"))
         self.lbl_device.setText(i18n.t("label_device"))
         self.lbl_local_model.setText(i18n.t("label_model"))
         self.btn_load.setText(i18n.t("btn_load_model"))
-        
-        # 刷新统计
-        self.lbl_stats_title.setText(i18n.t("label_stats"))
-
-        # 同步下拉框显示
+        if self.btn_toggle_view.isChecked():
+            self.btn_toggle_view.setText("← " + i18n.t("btn_back_chat", "Back"))
+        else:
+            self.btn_toggle_view.setText("⚙️ " + i18n.t("btn_settings", "Settings"))
         idx = self.combo_lang.findData(i18n.current_lang)
         if idx >= 0:
             self.combo_lang.blockSignals(True)
             self.combo_lang.setCurrentIndex(idx)
             self.combo_lang.blockSignals(False)
-
-    def set_stats(self, text):
-        """设置统计信息文本"""
-        self.lbl_stats_val.setText(text)

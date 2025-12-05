@@ -4,7 +4,6 @@ import sys
 from PyQt6.QtCore import QObject, pyqtSignal, QLocale
 
 class I18nManager(QObject):
-    # 信号：当语言改变时发出，通知所有界面刷新
     language_changed = pyqtSignal()
 
     def __init__(self):
@@ -12,11 +11,8 @@ class I18nManager(QObject):
         self.translations = {}
         
         if getattr(sys, 'frozen', False):
-            # 打包环境：使用 sys._MEIPASS 获取解压后的临时目录
             base_dir = sys._MEIPASS
         else:
-            # 开发环境：基于当前文件位置向上查找项目根目录
-            # app/core/i18n.py -> app/core -> app -> 根目录
             base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
             
         self.lang_dir = os.path.join(base_dir, "app", "lang")
@@ -33,24 +29,21 @@ class I18nManager(QObject):
 
         for f in os.listdir(self.lang_dir):
             if f.endswith(".json"):
-                lang_code = f[:-5] # 去掉 .json
+                lang_code = f[:-5]
                 langs[lang_code] = f
         return langs
 
     def auto_init(self):
         """自动检测系统语言并加载"""
-        sys_lang = QLocale.system().name() # 例如 "zh_CN", "en_US"
-        # 优先匹配完全相同的 locale
+        sys_lang = QLocale.system().name()
         if sys_lang in self.available_langs:
             self.load_language(sys_lang)
-        # 其次尝试匹配语言前缀 (如 zh_TW -> zh_CN)
         elif sys_lang.split('_')[0] in [l.split('_')[0] for l in self.available_langs]:
              for code in self.available_langs:
                  if code.startswith(sys_lang.split('_')[0]):
                      self.load_language(code)
                      return
         else:
-            # 默认回退到英文
             self.load_language("en_US")
 
     def load_language(self, lang_code):

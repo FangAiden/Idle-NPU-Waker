@@ -30,7 +30,6 @@ class StreamAdapter:
         sys.stdout.flush()
 
 def run_download_task(args):
-    # args 应该是 [repo_id, cache_dir, target_root]
     if len(args) < 3:
         print("@ERROR@参数不足")
         return

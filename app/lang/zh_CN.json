@@ -1,6 +1,5 @@
 {
     "app_title": "Idle NPU Waker",
-    
     "btn_new_chat": "+ 新建对话",
     "group_download": "下载模型 (魔搭社区)",
     "placeholder_repo": "选择或输入模型ID...",
@@ -34,7 +33,6 @@
     "tip_load_model_first": "请先加载模型",
     
     "menu_delete_chat": "删除会话",
-    
     "dialog_confirm_delete": "确认删除",
     "dialog_delete_msg": "确定要删除会话 \"{0}\" 吗?",
     "dialog_confirm_clear": "确认清空",
@@ -59,5 +57,29 @@
     "dl_error_exit": "下载进程异常退出 (代码: {0})",
     "dl_error_reason": "\n可能原因：缺少依赖库 (modelscope) 或网络连接失败。",
     "label_stats": "生成统计:",
-    "stats_pattern": "{0} tokens · {1:.1f} t/s · {2:.1f} s"
+    "stats_pattern": "{0} tokens · {1:.1f} t/s · {2:.1f} s",
+
+    "group_model_params": "模型参数配置",
+    "btn_settings": "参数设置",
+    "btn_back_chat": "返回对话",
+    
+    "grp_generation": "生成控制 (Generation)",
+    "grp_context": "上下文与对话 (Context)",
+    "grp_advanced": "高级设置 (Advanced)",
+
+    "conf_max_tokens": "最大生成长度 (Max Tokens)",
+    "conf_temp": "随机性 (Temperature)",
+    "conf_top_p": "核采样 (Top-P)",
+    "conf_top_k": "Top-K 采样",
+    "conf_rep_penalty": "重复惩罚 (Repetition Penalty)",
+    "conf_do_sample": "启用采样 (Do Sample)",
+    
+    "conf_history_turns": "历史对话轮数 (Context Turns)",
+    "conf_sys_prompt": "系统提示词 (System Prompt)",
+    
+    "conf_add_gen_prompt": "添加生成引导 (Add Gen Prompt)",
+    "conf_enable_thinking": "启用深度思考 (Deep Thinking)",
+    "conf_skip_special": "跳过特殊字符 (Skip Special)",
+    
+    "opt_enabled": "启用"
 }

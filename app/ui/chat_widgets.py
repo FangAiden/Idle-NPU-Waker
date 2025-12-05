@@ -1,0 +1,107 @@
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, 
+                             QLineEdit, QPushButton, QStackedWidget)
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from app.ui.message_bubble import MessageBubble
+from app.core.i18n import i18n
+from app.utils.styles import STYLE_BTN_PRIMARY, STYLE_BTN_DANGER, STYLE_INPUT_BOX, STYLE_SCROLL_AREA
+
+class ChatHistoryPanel(QWidget):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.init_ui()
+
+    def init_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setStyleSheet(STYLE_SCROLL_AREA)
+        
+        self.msg_container = QWidget()
+        self.msg_container.setStyleSheet("background-color: transparent;")
+        
+        self.msg_layout = QVBoxLayout(self.msg_container)
+        self.msg_layout.setContentsMargins(20, 20, 20, 20)
+        self.msg_layout.setSpacing(15)
+        self.msg_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        
+        self.scroll_area.setWidget(self.msg_container)
+        layout.addWidget(self.scroll_area)
+
+    def add_bubble(self, text, is_user=False):
+        bubble = MessageBubble(text, is_user=is_user)
+        self.msg_layout.addWidget(bubble)
+        self.scroll_to_bottom()
+        return bubble
+
+    def clear(self):
+        while self.msg_layout.count():
+            item = self.msg_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
+    def scroll_to_bottom(self):
+        QTimer.singleShot(10, lambda: self.scroll_area.verticalScrollBar().setValue(
+            self.scroll_area.verticalScrollBar().maximum()
+        ))
+
+
+class ChatInputBar(QWidget):
+    sig_send = pyqtSignal(str)
+    sig_stop = pyqtSignal()
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.init_ui()
+        i18n.language_changed.connect(self.update_texts)
+
+    def init_ui(self):
+        self.setStyleSheet("background-color: #0b0f19; border-top: 1px solid #1f2937;")
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(20, 15, 20, 15)
+        layout.setSpacing(10)
+
+        self.input_box = QLineEdit()
+        self.input_box.returnPressed.connect(self.on_send_clicked)
+        self.input_box.setStyleSheet(STYLE_INPUT_BOX)
+        layout.addWidget(self.input_box)
+
+        self.btn_stack = QStackedWidget()
+        self.btn_stack.setFixedSize(80, 40)
+        self.btn_stack.setStyleSheet("border: none;")
+
+        self.btn_send = QPushButton() 
+        self.btn_send.setStyleSheet(STYLE_BTN_PRIMARY)
+        self.btn_send.clicked.connect(self.on_send_clicked)
+        self.btn_stack.addWidget(self.btn_send)
+        
+        self.btn_stop = QPushButton() 
+        self.btn_stop.setStyleSheet(STYLE_BTN_DANGER)
+        self.btn_stop.clicked.connect(self.on_stop_clicked)
+        self.btn_stack.addWidget(self.btn_stop)
+
+        layout.addWidget(self.btn_stack)
+        self.update_texts()
+
+    def on_send_clicked(self):
+        txt = self.input_box.text().strip()
+        if txt:
+            self.sig_send.emit(txt)
+
+    def on_stop_clicked(self):
+        self.sig_stop.emit()
+
+    def set_generating(self, is_generating):
+        self.btn_stack.setCurrentIndex(1 if is_generating else 0)
+        self.input_box.setEnabled(not is_generating)
+        if not is_generating:
+            self.input_box.setFocus()
+
+    def clear_input(self):
+        self.input_box.clear()
+
+    def update_texts(self):
+        self.input_box.setPlaceholderText(i18n.t("input_placeholder"))
+        self.btn_send.setText(i18n.t("btn_send"))
+        self.btn_stop.setText(i18n.t("btn_stop"))

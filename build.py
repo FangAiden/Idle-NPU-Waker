@@ -5,17 +5,12 @@ import sys
 import time
 from pathlib import Path
 
-# ================= 配置区域 =================
-# 生成的 EXE 文件名
 APP_NAME = "IdleNPUWaker" 
 
-# 入口脚本
 MAIN_SCRIPT = "main.py"
 
-# 图标文件
 ICON_FILE = "app.ico"
 
-# 需要完整收集的依赖库
 COLLECT_PACKAGES = [
     "openvino_genai",
     "openvino",
@@ -24,13 +19,10 @@ COLLECT_PACKAGES = [
     "markdown"
 ]
 
-# 需要添加的数据文件 (格式: 源路径;目标路径)
-# 注意：Windows下分隔符为 ; (分号)，Linux/Mac下为 : (冒号)
 ADD_DATA = [
     "app;app",
     "app/lang;app/lang"
 ]
-# ===========================================
 
 def print_step(msg):
     print(f"\n{'='*60}\n[BUILD] {msg}\n{'='*60}")
@@ -63,10 +55,10 @@ def run_pyinstaller():
     
     cmd = [
         sys.executable, "-m", "PyInstaller",
-        "--noconsole",          # 无控制台窗口
-        "--onefile",            # 单文件模式
-        f"--name={APP_NAME}",   # 程序名称
-        MAIN_SCRIPT             # 入口脚本
+        "--noconsole",
+        "--onefile",
+        f"--name={APP_NAME}",
+        MAIN_SCRIPT
     ]
 
     if os.path.exists(ICON_FILE):
@@ -75,8 +67,6 @@ def run_pyinstaller():
     else:
         print(f" ! 未找到图标 {ICON_FILE}，将使用默认图标")
 
-    # 注意：这里的逻辑假设你在 Windows 上运行。
-    # 如果在 Linux/Mac 上打包，可能需要根据 os.name 调整 ADD_DATA 中的分隔符
     for data in ADD_DATA:
         cmd.append(f"--add-data={data}")
 

@@ -7,3 +7,4 @@ build
 dist
 IdleNPUWaker.spec
 runtime.log
+crash.log
