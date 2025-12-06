@@ -8,6 +8,7 @@ The application deeply integrates the **Intel OpenVINO™ GenAI** toolchain, opt
 > **New Feature:** Fully adapted for reasoning models (e.g., DeepSeek‑R1), supporting Chain‑of‑Thought (CoT) visualization with a collapsible Deep Thinking UI.
 
 ![Application Screenshot](assets/screenshot1.png)
+![Application Screenshot](assets/screenshot2.png)
 
 ---
 
