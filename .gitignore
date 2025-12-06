@@ -8,3 +8,4 @@ dist
 IdleNPUWaker.spec
 runtime.log
 crash.log
+sessions.json

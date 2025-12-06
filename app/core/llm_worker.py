@@ -1,80 +1,89 @@
-import openvino_genai as ov_genai
+import multiprocessing
+import threading
 from PyQt6.QtCore import QObject, pyqtSignal, pyqtSlot
-from app.core.runtime import RuntimeState
-from app.config import DEFAULT_CONFIG
+from app.core.llm_process import llm_process_entry
 
 class AIWorker(QObject):
+    # 保持原有信号定义不变，兼容 UI层
     signal_token = pyqtSignal(str)
     signal_finished = pyqtSignal()
     signal_error = pyqtSignal(str)
     signal_model_loaded = pyqtSignal(str, str)
 
-    def __init__(self, runtime: RuntimeState):
+    def __init__(self):
         super().__init__()
-        self.runtime = runtime
-        self._stop_flag = False
+        # 使用 'spawn' 启动方式，这对 Windows 是必须的，也能避免 Linux 下的 fork 问题
+        self.ctx = multiprocessing.get_context('spawn')
+        self.cmd_queue = self.ctx.Queue()
+        self.res_queue = self.ctx.Queue()
+        self.stop_event = self.ctx.Event()
+        
+        self.process = None
+        self.monitor_thread = None
+        self._is_running = True
+
+    def start_process_if_needed(self):
+        if self.process is None or not self.process.is_alive():
+            self.process = self.ctx.Process(
+                target=llm_process_entry,
+                args=(self.cmd_queue, self.res_queue, self.stop_event),
+                daemon=True # 设置为守护进程，主程序退出时自动结束
+            )
+            self.process.start()
+            
+            # 启动一个后台线程来监听子进程发回的消息
+            # 注意：不能在 Qt 主线程里 while True 监听，会卡死 UI
+            self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+            self.monitor_thread.start()
+
+    def _monitor_loop(self):
+        """后台线程：不断从队列取消息并触发 Qt 信号"""
+        while self._is_running:
+            try:
+                # 阻塞式获取，不会消耗 CPU
+                msg = self.res_queue.get()
+                
+                msg_type = msg.get("type")
+                
+                if msg_type == "token":
+                    self.signal_token.emit(msg["token"])
+                elif msg_type == "finished":
+                    self.signal_finished.emit()
+                elif msg_type == "loaded":
+                    self.signal_model_loaded.emit(msg["mid"], msg["dev"])
+                elif msg_type == "error":
+                    self.signal_error.emit(msg["msg"])
+            except (EOFError, BrokenPipeError):
+                break # 进程可能已关闭
+            except Exception as e:
+                print(f"Monitor Loop Error: {e}")
 
     @pyqtSlot(str, str, str, str)
     def load_model(self, source, model_id, model_dir, device):
-        try:
-            path, dev = self.runtime.ensure_loaded(source, model_id, model_dir, device)
-            self.signal_model_loaded.emit(self.runtime.model_id, dev)
-        except Exception as e:
-            self.signal_error.emit(f"模型加载失败: {str(e)}")
+        self.start_process_if_needed()
+        self.cmd_queue.put({
+            "type": "load",
+            "args": (source, model_id, model_dir, device)
+        })
 
     @pyqtSlot(list, dict)
     def generate(self, messages, ui_config):
-        if not self.runtime.pipe:
-            self.signal_error.emit("模型未加载")
-            self.signal_finished.emit()
-            return
-
-        self._stop_flag = False
-
-        def streamer_cb(sub_text):
-            if self._stop_flag:
-                return True
-            self.signal_token.emit(sub_text)
-            return False
-
-        try:
-            gen_params = DEFAULT_CONFIG.copy()
-            if ui_config:
-                gen_params.update(ui_config)
-
-            add_gen_prompt = gen_params.pop("add_generation_prompt", True)
-            
-            _ = gen_params.pop("enable_thinking", True) 
-            
-            for k in ["system_prompt", "max_history_turns", "skip_special_tokens"]:
-                if k in gen_params: gen_params.pop(k)
-
-            try:      
-                prompt = self.runtime.tokenizer.apply_chat_template(
-                    messages,
-                    add_generation_prompt=add_gen_prompt
-                )
-            except Exception as e:
-                print(f"[Worker] Template apply failed: {e}")
-
-                prompt = ""
-                for msg in messages:
-                    prompt += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
-                if add_gen_prompt:
-                    prompt += "<|im_start|>assistant\n"
-
-            gen_cfg = ov_genai.GenerationConfig(**gen_params)
-            
-            streamer = ov_genai.TextStreamer(self.runtime.tokenizer, streamer_cb)
-            
-            self.runtime.pipe.generate(prompt, generation_config=gen_cfg, streamer=streamer)
-            
-        except Exception as e:
-            if not self._stop_flag:
-                self.signal_error.emit(f"生成出错: {str(e)}")
-        finally:
-            self.signal_finished.emit()
+        self.start_process_if_needed()
+        self.cmd_queue.put({
+            "type": "generate",
+            "messages": messages,
+            "config": ui_config
+        })
 
     @pyqtSlot()
     def stop(self):
-        self._stop_flag = True
+        # 设置共享事件，子进程中的 streamer_cb 会检测到并停止
+        self.stop_event.set()
+
+    def cleanup(self):
+        self._is_running = False
+        if self.process:
+            self.cmd_queue.put(None) # 发送退出指令
+            self.process.join(timeout=1)
+            if self.process.is_alive():
+                self.process.terminate()

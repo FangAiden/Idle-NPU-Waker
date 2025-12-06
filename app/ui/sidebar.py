@@ -1,8 +1,10 @@
 from pathlib import Path
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                              QListWidget, QGroupBox, QComboBox, QProgressBar, QLabel,
-                             QStackedWidget, QFrame, QMessageBox, QListWidgetItem, QSizePolicy)
-from PyQt6.QtCore import Qt, pyqtSignal, QFileSystemWatcher
+                             QStackedWidget, QFrame, QMessageBox, QListWidgetItem, QSizePolicy,
+                             QMenu, QInputDialog)
+from PyQt6.QtCore import Qt, pyqtSignal, QFileSystemWatcher, QSize
+from PyQt6.QtGui import QIcon, QPixmap, QAction
 from app.config import MODELS_DIR, DOWNLOAD_CACHE_DIR
 from app.model_configs import PRESET_MODELS
 from app.core.i18n import i18n
@@ -10,6 +12,8 @@ from app.ui.settings_panel import ModelSettingsPanel
 from app.core.downloader import DownloadManager
 from app.utils.scanner import scan_dirs
 from app.utils.config_loader import load_model_json_configs
+from app.ui.widgets import NoScrollComboBox
+from app.ui.resources import MORE_ICON_SVG
 from app.utils.styles import (
     STYLE_BTN_PRIMARY, STYLE_BTN_SECONDARY, STYLE_BTN_DANGER_DARK,
     STYLE_BTN_GHOST, STYLE_BTN_LINK, STYLE_LIST_WIDGET, STYLE_GROUP_BOX,
@@ -19,10 +23,62 @@ import shutil
 import os
 import stat
 
+class SessionItemWidget(QWidget):
+    """自定义会话列表项，包含标题和更多按钮"""
+    sig_rename = pyqtSignal(str)
+    sig_delete = pyqtSignal(str)
+
+    def __init__(self, sid, title, parent=None):
+        super().__init__(parent)
+        self.sid = sid
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 5, 5, 5)
+        layout.setSpacing(5)
+
+        self.title_label = QLabel(title)
+        self.title_label.setStyleSheet("background: transparent; color: #e6e8ee; font-size: 13px;")
+        self.title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        layout.addWidget(self.title_label, 1)
+
+        self.btn_more = QPushButton()
+        self.btn_more.setFixedSize(24, 24)
+        self.btn_more.setStyleSheet("""
+            QPushButton { background: transparent; border: none; border-radius: 4px; }
+            QPushButton:hover { background-color: #374151; }
+        """)
+        pix = QPixmap()
+        pix.loadFromData(MORE_ICON_SVG)
+        self.btn_more.setIcon(QIcon(pix))
+        self.btn_more.clicked.connect(self.show_menu)
+        layout.addWidget(self.btn_more)
+
+    def show_menu(self):
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu { background-color: #1f2937; color: #e6e8ee; border: 1px solid #374151; }
+            QMenu::item { padding: 5px 20px; }
+            QMenu::item:selected { background-color: #374151; }
+        """)
+        
+        act_rename = QAction(i18n.t("menu_rename_chat", "Rename"), self)
+        act_rename.triggered.connect(lambda: self.sig_rename.emit(self.sid))
+        menu.addAction(act_rename)
+        
+        act_delete = QAction(i18n.t("menu_delete_chat", "Delete"), self)
+        act_delete.triggered.connect(lambda: self.sig_delete.emit(self.sid))
+        menu.addAction(act_delete)
+        
+        menu.exec(self.btn_more.mapToGlobal(self.btn_more.rect().bottomLeft()))
+
+    def update_title(self, new_title):
+        self.title_label.setText(new_title)
+
+
 class ChatSidebar(QWidget):
     sig_model_load_requested = pyqtSignal(str, str, str, str)
     sig_session_switch = pyqtSignal(str)
     sig_session_delete = pyqtSignal(str)
+    sig_session_rename = pyqtSignal(str, str)
     sig_new_chat = pyqtSignal()
 
     def __init__(self, parent=None):
@@ -68,8 +124,7 @@ class ChatSidebar(QWidget):
         layout_chat.addWidget(self.btn_new_chat)
         
         self.chat_list = QListWidget()
-        self.chat_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.chat_list.itemClicked.connect(lambda item: self.sig_session_switch.emit(item.data(Qt.ItemDataRole.UserRole)))
+        self.chat_list.itemClicked.connect(self._on_item_clicked)
         self.chat_list.setStyleSheet(STYLE_LIST_WIDGET)
         layout_chat.addWidget(self.chat_list, 1)
         
@@ -108,7 +163,7 @@ class ChatSidebar(QWidget):
         dl_layout = QVBoxLayout()
         dl_layout.setSpacing(8)
         
-        self.combo_repo = QComboBox()
+        self.combo_repo = NoScrollComboBox()
         self.combo_repo.setEditable(True)
         self.combo_repo.addItems(PRESET_MODELS)
         self.combo_repo.setStyleSheet(STYLE_COMBOBOX)
@@ -162,7 +217,8 @@ class ChatSidebar(QWidget):
         self.lbl_lang = QLabel()
         self.lbl_lang.setStyleSheet(STYLE_LABEL_NORMAL)
         run_layout.addWidget(self.lbl_lang)
-        self.combo_lang = QComboBox()
+        
+        self.combo_lang = NoScrollComboBox()
         self.combo_lang.addItem("English", "en_US")
         self.combo_lang.addItem("简体中文", "zh_CN")
         self.combo_lang.setStyleSheet(STYLE_COMBOBOX)
@@ -172,7 +228,8 @@ class ChatSidebar(QWidget):
         self.lbl_device = QLabel()
         self.lbl_device.setStyleSheet(STYLE_LABEL_NORMAL)
         run_layout.addWidget(self.lbl_device)
-        self.combo_device = QComboBox()
+        
+        self.combo_device = NoScrollComboBox()
         self.combo_device.addItems(["AUTO", "NPU", "GPU", "CPU"])
         self.combo_device.setStyleSheet(STYLE_COMBOBOX)
         run_layout.addWidget(self.combo_device)
@@ -180,7 +237,8 @@ class ChatSidebar(QWidget):
         self.lbl_local_model = QLabel()
         self.lbl_local_model.setStyleSheet(STYLE_LABEL_NORMAL)
         run_layout.addWidget(self.lbl_local_model)
-        self.combo_models = QComboBox()
+        
+        self.combo_models = NoScrollComboBox()
         self.combo_models.setStyleSheet(STYLE_COMBOBOX)
         self.combo_models.currentIndexChanged.connect(self.on_model_changed)
         run_layout.addWidget(self.combo_models)
@@ -275,20 +333,69 @@ class ChatSidebar(QWidget):
             self.lbl_dl_status.setText("Error")
 
     def add_session_item(self, sid, title):
-        item = QListWidgetItem(title)
+        """添加会话项，使用自定义 Widget"""
+        item = QListWidgetItem()
         item.setData(Qt.ItemDataRole.UserRole, sid)
+        item.setSizeHint(QSize(0, 40))
+        
+        widget = SessionItemWidget(sid, title)
+        widget.sig_rename.connect(self._handle_rename_request)
+        widget.sig_delete.connect(self.sig_session_delete.emit)
+        
         self.chat_list.insertItem(0, item)
+        self.chat_list.setItemWidget(item, widget)
         self.chat_list.setCurrentItem(item)
 
     def update_current_session_title(self, title):
         if self.chat_list.currentItem():
-            self.chat_list.currentItem().setText(title)
+            item = self.chat_list.currentItem()
+            widget = self.chat_list.itemWidget(item)
+            if widget:
+                widget.update_title(title)
+
+    def _on_item_clicked(self, item):
+        self.sig_session_switch.emit(item.data(Qt.ItemDataRole.UserRole))
+
+    def _handle_rename_request(self, sid):
+        text, ok = QInputDialog.getText(self, i18n.t("dialog_rename_title", "Rename Chat"), 
+                                        i18n.t("dialog_rename_msg", "Enter new name:"), 
+                                        text=i18n.t("default_chat_name"))
+        if ok and text.strip():
+            self.sig_session_rename.emit(sid, text.strip())
+            for i in range(self.chat_list.count()):
+                item = self.chat_list.item(i)
+                if item.data(Qt.ItemDataRole.UserRole) == sid:
+                    widget = self.chat_list.itemWidget(item)
+                    if widget:
+                        widget.update_title(text.strip())
+                    break
+
+    def populate_sessions(self, sessions_dict, current_sid):
+        """启动时加载所有会话"""
+        self.chat_list.clear()
+        if not sessions_dict: return
+
+        for sid, data in sessions_dict.items():
+            self.add_session_item(sid, data.get("title", "Untitled"))
+        
+        if current_sid:
+            for i in range(self.chat_list.count()):
+                item = self.chat_list.item(i)
+                if item.data(Qt.ItemDataRole.UserRole) == current_sid:
+                    self.chat_list.setCurrentItem(item)
+                    break
+
+    def remove_session_item(self, sid):
+        for i in range(self.chat_list.count()):
+            item = self.chat_list.item(i)
+            if item.data(Qt.ItemDataRole.UserRole) == sid:
+                self.chat_list.takeItem(i)
+                break
 
     def shutdown(self):
         self.dl_manager.stop_download()
 
     def on_model_changed(self):
-        """模型变更时触发，自动应用配置"""
         model_name = self.combo_models.currentText()
         model_path = self.combo_models.currentData()
 

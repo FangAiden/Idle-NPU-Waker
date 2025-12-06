@@ -6,7 +6,6 @@ from PyQt6.QtGui import QIcon, QPixmap
 
 from app.core.llm_worker import AIWorker
 from app.core.session import SessionManager
-from app.core.runtime import RuntimeState
 from app.ui.sidebar import ChatSidebar
 from app.ui.chat_widgets import ChatHistoryPanel, ChatInputBar
 from app.ui.resources import APP_ICON_SVG
@@ -26,11 +25,10 @@ class ChatWindow(QMainWindow):
         pix.loadFromData(APP_ICON_SVG)
         self.setWindowIcon(QIcon(pix))
 
-        self.runtime = RuntimeState()
         self.session_mgr = SessionManager()
         
         self.thread_ai = QThread()
-        self.worker_ai = AIWorker(self.runtime)
+        self.worker_ai = AIWorker()
         self.worker_ai.moveToThread(self.thread_ai)
         
         self._connect_worker_signals()
@@ -43,7 +41,18 @@ class ChatWindow(QMainWindow):
         self.current_ai_buffer = ""
         self.current_ai_bubble = None
         
-        self.do_new_chat()
+        self.is_model_loaded = False 
+        self.current_model_path = None 
+        
+        if self.session_mgr.sessions:
+            self.sidebar.populate_sessions(self.session_mgr.sessions, self.session_mgr.current_session_id)
+            if self.session_mgr.current_session_id:
+                self.do_switch_session(self.session_mgr.current_session_id)
+            else:
+                first_sid = list(self.session_mgr.sessions.keys())[0]
+                self.do_switch_session(first_sid)
+        else:
+            self.do_new_chat()
 
     def _connect_worker_signals(self):
         self.sig_worker_load.connect(self.worker_ai.load_model)
@@ -73,6 +82,7 @@ class ChatWindow(QMainWindow):
         self.sidebar.sig_session_switch.connect(self.do_switch_session)
         self.sidebar.sig_model_load_requested.connect(self.do_load_model)
         self.sidebar.sig_session_delete.connect(self.do_delete_session)
+        self.sidebar.sig_session_rename.connect(self.do_rename_session)
 
         self.input_bar.sig_send.connect(self.do_send)
         self.input_bar.sig_stop.connect(self.worker_ai.stop)
@@ -95,15 +105,27 @@ class ChatWindow(QMainWindow):
         i18n.language_changed.connect(lambda: self.setWindowTitle(i18n.t("app_title")))
 
     def do_load_model(self, src, mid, path, dev):
+        if self.is_model_loaded and self.current_model_path == path:
+            if hasattr(self.sidebar, 'on_model_load_result'):
+                self.sidebar.on_model_load_result(True, dev)
+            msg = i18n.t("status_loaded").format(i18n.t("msg_already_loaded"))
+            QMessageBox.information(self, i18n.t("dialog_loaded_title"), msg)
+            return
+
+        self.pending_model_path = path 
         self.sig_worker_load.emit(src, mid, path, dev)
 
     def on_model_loaded(self, mid, dev):
+        self.is_model_loaded = True
+        if hasattr(self, 'pending_model_path'):
+            self.current_model_path = self.pending_model_path
+            
         if hasattr(self.sidebar, 'on_model_load_result'):
             self.sidebar.on_model_load_result(True, dev)
         QMessageBox.information(self, i18n.t("dialog_loaded_title"), i18n.t("dialog_loaded_msg").format(dev))
 
     def do_send(self, text):
-        if not self.runtime.tokenizer:
+        if not self.is_model_loaded:
             QMessageBox.warning(self, i18n.t("app_title"), i18n.t("tip_load_model_first"))
             return
 
@@ -166,13 +188,6 @@ class ChatWindow(QMainWindow):
         try:
             duration = time.time() - self.gen_start_time
             count = self.stream_token_count
-            if self.runtime.tokenizer and self.current_ai_buffer:
-                enc = self.runtime.tokenizer.encode(self.current_ai_buffer)
-                if hasattr(enc, 'input_ids'):
-                    count = len(enc.input_ids[0]) if len(enc.input_ids.shape) > 1 else len(enc.input_ids)
-                else:
-                    count = len(enc)
-            
             tps = count / duration if duration > 0.01 else 0
             pattern = i18n.t("stats_pattern", "{0} tokens · {1:.1f} t/s · {2:.1f} s")
             self.sidebar.set_stats(pattern.format(count, tps, duration))
@@ -182,6 +197,8 @@ class ChatWindow(QMainWindow):
         self.input_bar.set_generating(False)
         if hasattr(self.sidebar, 'on_model_load_result'):
             self.sidebar.on_model_load_result(False, "")
+        
+        self.current_model_path = None
         
         QMessageBox.critical(self, i18n.t("dialog_error"), err_msg)
         if self.current_ai_bubble:
@@ -199,14 +216,39 @@ class ChatWindow(QMainWindow):
         for msg in history:
             self.history_panel.add_bubble(msg["content"], is_user=(msg["role"]=="user"))
 
+    def do_rename_session(self, sid, new_title):
+        self.session_mgr.rename_session(sid, new_title)
+
     def do_delete_session(self, sid):
-        self.session_mgr.delete_session(sid)
-        if not self.session_mgr.current_session_id:
-            self.do_new_chat()
+        session = self.session_mgr.get_session(sid)
+        if not session: return
+        
+        reply = QMessageBox.question(self, i18n.t("dialog_confirm_delete"), 
+                                     i18n.t("dialog_delete_msg").format(session.get("title", "")),
+                                     QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No, 
+                                     QMessageBox.StandardButton.No)
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            is_current = (self.session_mgr.current_session_id == sid)
+            
+            self.session_mgr.delete_session(sid)
+            self.sidebar.remove_session_item(sid)
+            
+            if is_current:
+                if self.session_mgr.sessions:
+                    first_sid = list(self.session_mgr.sessions.keys())[0]
+                    self.sidebar.chat_list.setCurrentRow(0)
+                    self.do_switch_session(first_sid)
+                else:
+                    self.do_new_chat()
 
     def closeEvent(self, event):
         self.sidebar.shutdown()
-        self.worker_ai.stop()
+        if hasattr(self.worker_ai, 'cleanup'):
+            self.worker_ai.cleanup()
+        else:
+            self.worker_ai.stop()
+            
         self.thread_ai.quit()
         self.thread_ai.wait(1000)
         super().closeEvent(event)

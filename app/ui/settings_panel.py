@@ -1,11 +1,11 @@
 from pathlib import Path
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QLabel, QScrollArea, 
-                             QCheckBox, QSpinBox, QDoubleSpinBox, QGroupBox)
+                             QCheckBox, QGroupBox)
 from PyQt6.QtCore import Qt
 from app.config import CONFIG_GROUPS
 from app.model_configs import MODEL_SPECIFIC_CONFIGS 
 from app.core.i18n import i18n
-from app.ui.widgets import SliderControl, TextAreaControl
+from app.ui.widgets import SliderControl, TextAreaControl, NoScrollSpinBox, NoScrollDoubleSpinBox
 from app.utils.styles import (
     STYLE_SCROLL_AREA, STYLE_CHECKBOX, STYLE_SPINBOX, STYLE_LABEL_TITLE, STYLE_GROUP_BOX
 )
@@ -96,12 +96,12 @@ class ModelSettingsPanel(QWidget):
             widget = TextAreaControl(meta["default"])
         else:
             if meta["type"] == "int":
-                widget = QSpinBox()
+                widget = NoScrollSpinBox()
                 widget.setRange(meta["min"], meta["max"])
                 widget.setSingleStep(meta["step"])
                 widget.setValue(meta["default"])
             else:
-                widget = QDoubleSpinBox()
+                widget = NoScrollDoubleSpinBox()
                 widget.setRange(meta["min"], meta["max"])
                 widget.setSingleStep(meta["step"])
                 widget.setValue(meta["default"])
@@ -110,7 +110,6 @@ class ModelSettingsPanel(QWidget):
         return widget
 
     def apply_preset(self, model_name):
-        """应用预设配置（硬编码的最佳实践）"""
         self.block_signals_all(True)
         for widget in self.config_widgets.values():
             val = widget.property("default_val")
@@ -134,7 +133,6 @@ class ModelSettingsPanel(QWidget):
         self.block_signals_all(False)
 
     def apply_dynamic_config(self, config_data):
-        """根据从模型文件读取的配置动态更新 UI"""
         self.block_signals_all(True)
         
         mapping = {
@@ -170,7 +168,7 @@ class ModelSettingsPanel(QWidget):
             widget.setValue(val)
         elif isinstance(widget, TextAreaControl):
             widget.setValue(str(val))
-        elif isinstance(widget, (QSpinBox, QDoubleSpinBox)):
+        elif isinstance(widget, (NoScrollSpinBox, NoScrollDoubleSpinBox)):
             widget.setValue(val)
         elif isinstance(widget, QCheckBox):
             widget.setChecked(val)
@@ -180,7 +178,7 @@ class ModelSettingsPanel(QWidget):
         for key, widget in self.config_widgets.items():
             if isinstance(widget, (SliderControl, TextAreaControl)):
                 cfg[key] = widget.value()
-            elif isinstance(widget, (QSpinBox, QDoubleSpinBox)):
+            elif isinstance(widget, (NoScrollSpinBox, NoScrollDoubleSpinBox)):
                 cfg[key] = widget.value()
             elif isinstance(widget, QCheckBox):
                 cfg[key] = widget.isChecked()

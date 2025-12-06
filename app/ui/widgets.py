@@ -1,7 +1,21 @@
 from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QSlider, QSpinBox, 
-                             QDoubleSpinBox, QPlainTextEdit)
+                             QDoubleSpinBox, QPlainTextEdit, QComboBox)
 from PyQt6.QtCore import Qt
-from app.utils.styles import STYLE_SLIDER, STYLE_SPINBOX, STYLE_TEXT_AREA
+from app.utils.styles import STYLE_SLIDER, STYLE_SPINBOX, STYLE_TEXT_AREA, STYLE_COMBOBOX
+
+# [新增] 禁用滚轮的 ComboBox
+class NoScrollComboBox(QComboBox):
+    def wheelEvent(self, event):
+        # 忽略事件，使其冒泡给父容器（滚动区域），实现“只滚动页面，不改数值”
+        event.ignore()
+
+class NoScrollSpinBox(QSpinBox):
+    def wheelEvent(self, event):
+        event.ignore()
+
+class NoScrollDoubleSpinBox(QDoubleSpinBox):
+    def wheelEvent(self, event):
+        event.ignore()
 
 class SliderControl(QWidget):
     def __init__(self, dtype, min_val, max_val, step, default_val):
@@ -20,13 +34,13 @@ class SliderControl(QWidget):
         self.slider.setStyleSheet(STYLE_SLIDER)
         
         if dtype == "float":
-            self.spinner = QDoubleSpinBox()
+            self.spinner = NoScrollDoubleSpinBox()
             self.spinner.setRange(min_val, max_val)
             self.spinner.setSingleStep(step)
             self.spinner.setValue(default_val)
             self.spinner.setDecimals(2 if step < 0.1 else 1)
         else:
-            self.spinner = QSpinBox()
+            self.spinner = NoScrollSpinBox()
             self.spinner.setRange(int(min_val), int(max_val))
             self.spinner.setSingleStep(int(step))
             self.spinner.setValue(int(default_val))

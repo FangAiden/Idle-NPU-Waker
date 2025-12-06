@@ -81,5 +81,10 @@
     "conf_enable_thinking": "启用深度思考 (Deep Thinking)",
     "conf_skip_special": "跳过特殊字符 (Skip Special)",
     
-    "opt_enabled": "启用"
+    "opt_enabled": "启用",
+    "msg_already_loaded": "模型已加载",
+
+    "menu_rename_chat": "重命名",
+    "dialog_rename_title": "重命名会话",
+    "dialog_rename_msg": "请输入新的会话名称:"
 }

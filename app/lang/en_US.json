@@ -83,5 +83,10 @@
     "conf_enable_thinking": "Enable Deep Thinking",
     "conf_skip_special": "Skip Special Tokens",
     
-    "opt_enabled": "Enabled"
+    "opt_enabled": "Enabled",
+    "msg_already_loaded": "Already Loaded",
+
+    "menu_rename_chat": "Rename",
+    "dialog_rename_title": "Rename Chat",
+    "dialog_rename_msg": "Enter new chat name:"
 }
