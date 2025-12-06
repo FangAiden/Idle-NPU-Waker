@@ -243,7 +243,7 @@ class ChatWindow(QMainWindow):
             if is_current:
                 if self.session_mgr.sessions:
                     first_sid = list(self.session_mgr.sessions.keys())[0]
-                    self.sidebar.chat_list.setCurrentRow(0)
+                    self.sidebar.session_panel.chat_list.setCurrentRow(0)
                     self.do_switch_session(first_sid)
                 else:
                     self.do_new_chat()
