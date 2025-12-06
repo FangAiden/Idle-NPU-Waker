@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QSlider, QSpinBox, 
                              QDoubleSpinBox, QPlainTextEdit)
 from PyQt6.QtCore import Qt
-from app.utils.styles import STYLE_SLIDER, STYLE_SPINBOX
+from app.utils.styles import STYLE_SLIDER, STYLE_SPINBOX, STYLE_TEXT_AREA
 
 class SliderControl(QWidget):
     def __init__(self, dtype, min_val, max_val, step, default_val):
@@ -65,18 +65,7 @@ class TextAreaControl(QPlainTextEdit):
         super().__init__()
         self.setPlainText(str(default_text))
         self.setFixedHeight(80)
-        self.setStyleSheet("""
-            QPlainTextEdit {
-                background-color: #111827;
-                border: 1px solid #374151;
-                border-radius: 6px;
-                color: #f3f4f6;
-                padding: 6px;
-                font-family: 'Segoe UI', sans-serif;
-                font-size: 13px;
-            }
-            QPlainTextEdit:focus { border: 1px solid #5aa9ff; }
-        """)
+        self.setStyleSheet(STYLE_TEXT_AREA)
 
     def value(self):
         return self.toPlainText()

@@ -1,3 +1,10 @@
+"""
+模型预设配置
+注意：通用的生成参数 (如 temperature, top_p, max_new_tokens) 现在优先从
+模型目录下的 generation_config.json 动态读取。
+此处仅保留下载列表以及应用层特定的配置（如系统提示词、思考模式开关）。
+"""
+
 PRESET_MODELS = [
     "OpenVINO/Qwen3-8B-int4-cw-ov",
     "OpenVINO/DeepSeek-R1-Distill-Qwen-1.5B-int4-cw-ov",
@@ -12,12 +19,6 @@ PRESET_MODELS = [
 
 MODEL_SPECIFIC_CONFIGS = {
     "OpenVINO/Qwen3-8B-int4-cw-ov": {
-        "grp_generation": {
-            "max_new_tokens": 2048, 
-            "temperature": 0.7, 
-            "top_p": 0.8, 
-            "repetition_penalty": 1.05
-        },
         "grp_context": {
             "system_prompt": "You are Qwen, created by Alibaba Cloud. You are a helpful assistant."
         },
@@ -27,11 +28,6 @@ MODEL_SPECIFIC_CONFIGS = {
         }
     },
     "OpenVINO/DeepSeek-R1-Distill-Qwen-1.5B-int4-cw-ov": {
-        "grp_generation": {
-            "max_new_tokens": 2048, 
-            "temperature": 0.6, 
-            "top_p": 0.95
-        },
         "grp_context": {
             "system_prompt": "You are a helpful assistant. You should think before you answer."
         },
@@ -41,11 +37,6 @@ MODEL_SPECIFIC_CONFIGS = {
         }
     },
     "OpenVINO/DeepSeek-R1-Distill-Qwen-7B-int4-cw-ov": {
-        "grp_generation": {
-            "max_new_tokens": 2048, 
-            "temperature": 0.6, 
-            "top_p": 0.95
-        },
         "grp_context": {
             "system_prompt": "You are a helpful assistant. You should think before you answer."
         },

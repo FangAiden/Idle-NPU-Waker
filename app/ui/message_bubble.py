@@ -8,6 +8,11 @@ from PyQt6.QtGui import QIcon, QPixmap, QTransform, QDesktopServices
 from PyQt6.QtCore import QUrl
 from app.ui.resources import AI_AVATAR_SVG, USER_AVATAR_SVG, COPY_ICON_SVG, CHEVRON_ICON_SVG
 from app.core.i18n import i18n
+from app.utils.styles import (
+    STYLE_BTN_THINK_TOGGLE, STYLE_THINK_FRAME, STYLE_THINK_LABEL,
+    STYLE_CONTENT_BUBBLE_BASE, STYLE_BTN_ICON_ONLY, MARKDOWN_CSS,
+    COLOR_BUBBLE_USER, COLOR_BUBBLE_AI
+)
 
 try:
     import markdown
@@ -54,39 +59,21 @@ class MessageBubble(QWidget):
         self.btn_think_toggle = QPushButton("")
         self.btn_think_toggle.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_think_toggle.setVisible(False)
-        self.btn_think_toggle.setStyleSheet("""
-            QPushButton {
-                background: transparent;
-                text-align: left;
-                color: #6b7280;
-                font-size: 12px;
-                border: none;
-                font-weight: bold;
-                padding: 4px 0;
-            }
-            QPushButton:hover { color: #9ca3af; }
-        """)
+        self.btn_think_toggle.setStyleSheet(STYLE_BTN_THINK_TOGGLE)
         self.btn_think_toggle.setIconSize(QSize(16, 16))
         self.btn_think_toggle.clicked.connect(self.toggle_think)
         self.content_layout.addWidget(self.btn_think_toggle)
 
         self.think_frame = QFrame()
         self.think_frame.setVisible(False)
-        self.think_frame.setStyleSheet("""
-            QFrame {
-                background-color: #1a1e24; 
-                border-left: 3px solid #4b5563;
-                border-radius: 4px;
-                margin-bottom: 8px;
-            }
-        """)
+        self.think_frame.setStyleSheet(STYLE_THINK_FRAME)
         think_layout = QVBoxLayout(self.think_frame)
         think_layout.setContentsMargins(10, 8, 10, 8)
 
         self.think_lbl = QLabel()
         self.think_lbl.setWordWrap(True)
         self.think_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        self.think_lbl.setStyleSheet("color: #9ca3af; font-size: 13px; font-family: 'Segoe UI', sans-serif;")
+        self.think_lbl.setStyleSheet(STYLE_THINK_LABEL)
         think_layout.addWidget(self.think_lbl)
         self.content_layout.addWidget(self.think_frame)
 
@@ -96,23 +83,14 @@ class MessageBubble(QWidget):
         self.content_lbl.setOpenExternalLinks(True)
         self.content_lbl.linkActivated.connect(self.open_link)
         
-        bg_color = "#1e2842" if self.is_user else "#2d3748"
-        self.content_lbl.setStyleSheet(f"""
-            QLabel {{
-                background-color: {bg_color};
-                color: #ffffff;
-                border-radius: 12px;
-                padding: 12px;
-                font-size: 14px;
-                line-height: 1.5;
-            }}
-        """)
+        bg_color = COLOR_BUBBLE_USER if self.is_user else COLOR_BUBBLE_AI
+        self.content_lbl.setStyleSheet(STYLE_CONTENT_BUBBLE_BASE + f"QLabel {{ background-color: {bg_color}; }}")
         self.content_layout.addWidget(self.content_lbl)
 
         self.btn_copy = QPushButton()
         self.btn_copy.setFixedSize(24, 24)
         self.btn_copy.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_copy.setStyleSheet("QPushButton { background: transparent; border: none; } QPushButton:hover { background-color: #3e4f65; border-radius: 4px; }")
+        self.btn_copy.setStyleSheet(STYLE_BTN_ICON_ONLY)
         cp_pix = QPixmap()
         cp_pix.loadFromData(COPY_ICON_SVG)
         self.btn_copy.setIcon(QIcon(cp_pix))
@@ -152,7 +130,7 @@ class MessageBubble(QWidget):
         self.update_status_text(self.is_currently_thinking)
 
     def refresh_ui_text(self):
-        """当语言改变时被调用"""
+        """Called when language changes"""
         if not self.btn_think_toggle.isVisible() and len(self.full_text) < 20: 
              self.update_display_text(self.full_text)
         
@@ -228,26 +206,8 @@ class MessageBubble(QWidget):
             
             if HAS_MARKDOWN:
                 html_content = markdown.markdown(main_content, extensions=['fenced_code', 'nl2br'])
-                
-                style = """
-                <style>
-                pre { 
-                    background-color: #12151b; 
-                    color: #dcdfe4; 
-                    padding: 10px; 
-                    border-radius: 6px;
-                    border: 1px solid #2b323b;
-                    font-family: Consolas, monospace;
-                }
-                code { color: #dcdfe4; }
-                h1, h2, h3 { color: #5aa9ff; font-weight: bold; margin-top: 10px; }
-                strong { color: #f0f0f0; }
-                p { margin-bottom: 8px; }
-                a { color: #5aa9ff; text-decoration: none; }
-                </style>
-                """
                 self.content_lbl.setTextFormat(Qt.TextFormat.RichText)
-                self.content_lbl.setText(style + html_content)
+                self.content_lbl.setText(MARKDOWN_CSS + html_content)
             else:
                 self.content_lbl.setTextFormat(Qt.TextFormat.MarkdownText)
                 self.content_lbl.setText(main_content)

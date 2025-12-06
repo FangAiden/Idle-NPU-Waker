@@ -3,7 +3,10 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QScrollArea,
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from app.ui.message_bubble import MessageBubble
 from app.core.i18n import i18n
-from app.utils.styles import STYLE_BTN_PRIMARY, STYLE_BTN_DANGER, STYLE_INPUT_BOX, STYLE_SCROLL_AREA
+from app.utils.styles import (
+    STYLE_BTN_PRIMARY, STYLE_BTN_DANGER, STYLE_INPUT_BOX, 
+    STYLE_SCROLL_AREA, STYLE_CHAT_INPUT_BAR
+)
 
 class ChatHistoryPanel(QWidget):
     def __init__(self, parent=None):
@@ -57,7 +60,7 @@ class ChatInputBar(QWidget):
         i18n.language_changed.connect(self.update_texts)
 
     def init_ui(self):
-        self.setStyleSheet("background-color: #0b0f19; border-top: 1px solid #1f2937;")
+        self.setStyleSheet(STYLE_CHAT_INPUT_BAR)
         layout = QHBoxLayout(self)
         layout.setContentsMargins(20, 15, 20, 15)
         layout.setSpacing(10)

@@ -9,6 +9,7 @@ from app.core.i18n import i18n
 from app.ui.settings_panel import ModelSettingsPanel
 from app.core.downloader import DownloadManager
 from app.utils.scanner import scan_dirs
+from app.utils.config_loader import load_model_json_configs
 from app.utils.styles import (
     STYLE_BTN_PRIMARY, STYLE_BTN_SECONDARY, STYLE_BTN_DANGER_DARK,
     STYLE_BTN_GHOST, STYLE_BTN_LINK, STYLE_LIST_WIDGET, STYLE_GROUP_BOX,
@@ -287,9 +288,21 @@ class ChatSidebar(QWidget):
         self.dl_manager.stop_download()
 
     def on_model_changed(self):
-        txt = self.combo_models.currentText()
+        """模型变更时触发，自动应用配置"""
+        model_name = self.combo_models.currentText()
+        model_path = self.combo_models.currentData()
+
         if hasattr(self, 'settings_panel'):
-            self.settings_panel.apply_preset(txt)
+            self.settings_panel.apply_preset(model_name)
+            
+            if model_path:
+                try:
+                    dynamic_conf = load_model_json_configs(model_path)
+                    if dynamic_conf:
+                        print(f"Loaded dynamic config for {model_name}: {dynamic_conf}")
+                        self.settings_panel.apply_dynamic_config(dynamic_conf)
+                except Exception as e:
+                    print(f"Failed to load dynamic config: {e}")
 
     def get_current_config(self):
         if hasattr(self, 'settings_panel'):

@@ -110,6 +110,7 @@ class ModelSettingsPanel(QWidget):
         return widget
 
     def apply_preset(self, model_name):
+        """应用预设配置（硬编码的最佳实践）"""
         self.block_signals_all(True)
         for widget in self.config_widgets.values():
             val = widget.property("default_val")
@@ -130,6 +131,38 @@ class ModelSettingsPanel(QWidget):
                 elif key_or_group in self.config_widgets:
                     self._set_widget_value(self.config_widgets[key_or_group], val_or_dict)
                     
+        self.block_signals_all(False)
+
+    def apply_dynamic_config(self, config_data):
+        """根据从模型文件读取的配置动态更新 UI"""
+        self.block_signals_all(True)
+        
+        mapping = {
+            "temperature": "temperature",
+            "top_p": "top_p",
+            "top_k": "top_k",
+            "repetition_penalty": "repetition_penalty",
+            "do_sample": "do_sample",
+            "max_new_tokens": "max_new_tokens"
+        }
+
+        for json_key, widget_key in mapping.items():
+            if json_key in config_data and widget_key in self.config_widgets:
+                val = config_data[json_key]
+                if widget_key == "top_k": val = int(val)
+                elif widget_key == "max_new_tokens": val = int(val)
+                
+                self._set_widget_value(self.config_widgets[widget_key], val)
+
+        if "model_max_length" in config_data:
+            max_len = config_data["model_max_length"]
+            if "max_new_tokens" in self.config_widgets:
+                widget = self.config_widgets["max_new_tokens"]
+                safe_max = min(max_len, 8192) 
+                if isinstance(widget, SliderControl):
+                    widget.slider.setMaximum(int(safe_max))
+                    widget.spinner.setMaximum(int(safe_max))
+
         self.block_signals_all(False)
 
     def _set_widget_value(self, widget, val):
