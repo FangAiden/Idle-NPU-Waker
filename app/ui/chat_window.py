@@ -10,7 +10,7 @@ from app.ui.sidebar import ChatSidebar
 from app.ui.chat_widgets import ChatHistoryPanel, ChatInputBar
 from app.ui.resources import APP_ICON_SVG
 from app.core.i18n import i18n
-from app.utils.styles import MAIN_STYLESHEET
+from app.utils.styles import MAIN_STYLESHEET, STYLE_SPLITTER
 
 class ChatWindow(QMainWindow):
     sig_worker_load = pyqtSignal(str, str, str, str)
@@ -72,7 +72,7 @@ class ChatWindow(QMainWindow):
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setHandleWidth(1)
-        splitter.setStyleSheet("QSplitter::handle { background-color: #1e2842; }")
+        splitter.setStyleSheet(STYLE_SPLITTER)
 
         self.sidebar = ChatSidebar()
         self.history_panel = ChatHistoryPanel()

@@ -7,7 +7,8 @@ from app.model_configs import MODEL_SPECIFIC_CONFIGS
 from app.core.i18n import i18n
 from app.ui.widgets import SliderControl, TextAreaControl, NoScrollSpinBox, NoScrollDoubleSpinBox
 from app.utils.styles import (
-    STYLE_SCROLL_AREA, STYLE_CHECKBOX, STYLE_SPINBOX, STYLE_LABEL_TITLE, STYLE_GROUP_BOX
+    STYLE_SCROLL_AREA, STYLE_CHECKBOX, STYLE_SPINBOX, STYLE_LABEL_TITLE, 
+    STYLE_GROUP_BOX, STYLE_LABEL_SETTING_ITEM
 )
 
 class ModelSettingsPanel(QWidget):
@@ -68,7 +69,7 @@ class ModelSettingsPanel(QWidget):
                 label = QLabel()
                 label.setProperty("i18n_key", meta["label_key"])
                 label.setText(i18n.t(meta["label_key"])) 
-                label.setStyleSheet("color: #e5e7eb; font-size: 13px; font-weight: 500;")
+                label.setStyleSheet(STYLE_LABEL_SETTING_ITEM)
                 item_layout.addWidget(label)
                 
                 widget = self._create_widget(meta)

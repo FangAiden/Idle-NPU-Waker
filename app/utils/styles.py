@@ -1,3 +1,10 @@
+"""
+统一的样式定义文件
+包含了颜色常量和所有 Qt 控件的 QSS 样式表。
+整合了原 app/utils/styles.py 以及分散在 sidebar.py, chat_window.py 等文件中的硬编码样式。
+"""
+
+# ================= 颜色定义 =================
 COLOR_BG_DARK = "#0b0f19"
 COLOR_BG_PANEL = "#111827"
 COLOR_BORDER = "#1f2937"
@@ -11,12 +18,13 @@ COLOR_BUBBLE_AI = "#2d3748"
 COLOR_THINK_BG = "#1a1e24"
 COLOR_THINK_BORDER = "#4b5563"
 
+# ================= 全局样式 =================
 MAIN_STYLESHEET = f"""
 QMainWindow {{ background-color: {COLOR_BG_DARK}; color: {COLOR_TEXT_PRIMARY}; }}
 QWidget {{ font-family: 'Segoe UI', sans-serif; }}
 """
 
-
+# ================= 按钮样式 =================
 STYLE_BTN_PRIMARY = f"""
     QPushButton {{ 
         background-color: {COLOR_ACCENT}; 
@@ -95,7 +103,12 @@ STYLE_BTN_THINK_TOGGLE = """
     QPushButton:hover { color: #9ca3af; }
 """
 
+STYLE_BTN_SESSION_MORE = """
+    QPushButton { background: transparent; border: none; border-radius: 4px; }
+    QPushButton:hover { background-color: #374151; }
+"""
 
+# ================= 输入与控制控件样式 =================
 STYLE_COMBOBOX = f"""
     QComboBox {{ 
         background-color: {COLOR_BG_PANEL}; 
@@ -132,6 +145,8 @@ STYLE_INPUT_BOX = f"""
     QLineEdit:focus {{ border: 1px solid {COLOR_ACCENT}; }}
 """
 
+STYLE_CHAT_INPUT_BAR = f"background-color: {COLOR_BG_DARK}; border-top: 1px solid {COLOR_BORDER};"
+
 STYLE_TEXT_AREA = f"""
     QPlainTextEdit {{
         background-color: {COLOR_BG_PANEL};
@@ -157,6 +172,7 @@ STYLE_SLIDER = f"""
     QSlider::handle:horizontal:hover {{ background: {COLOR_ACCENT_HOVER}; }}
 """
 
+# ================= 容器与布局样式 =================
 STYLE_GROUP_BOX = f"""
     QGroupBox {{ 
         border: 1px solid {COLOR_BORDER}; 
@@ -168,7 +184,6 @@ STYLE_GROUP_BOX = f"""
     }} 
     QGroupBox::title {{ subcontrol-origin: margin; left: 10px; padding: 0 5px; }}
 """
-
 
 STYLE_LIST_WIDGET = f"""
     QListWidget {{ background: transparent; border: none; outline: none; }}
@@ -184,12 +199,6 @@ STYLE_SCROLL_AREA = f"""
     QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0px; }}
 """
 
-STYLE_PROGRESS_BAR = f"""
-    QProgressBar {{ border: none; background-color: {COLOR_BORDER}; border-radius: 6px; }} 
-    QProgressBar::chunk {{ background-color: {COLOR_ACCENT}; border-radius: 6px; }}
-"""
-
-
 STYLE_THINK_FRAME = f"""
     QFrame {{
         background-color: {COLOR_THINK_BG}; 
@@ -199,6 +208,22 @@ STYLE_THINK_FRAME = f"""
     }}
 """
 
+STYLE_PROGRESS_BAR = f"""
+    QProgressBar {{ border: none; background-color: {COLOR_BORDER}; border-radius: 6px; }} 
+    QProgressBar::chunk {{ background-color: {COLOR_ACCENT}; border-radius: 6px; }}
+"""
+
+STYLE_SPLITTER = "QSplitter::handle { background-color: #1e2842; }"
+
+STYLE_SIDEBAR_BOTTOM_BAR = "background-color: #0b0f19; border-top: 1px solid #1f2937;"
+
+STYLE_MENU_DARK = """
+    QMenu { background-color: #1f2937; color: #e6e8ee; border: 1px solid #374151; }
+    QMenu::item { padding: 5px 20px; }
+    QMenu::item:selected { background-color: #374151; }
+"""
+
+# ================= 标签与文本样式 =================
 STYLE_THINK_LABEL = "color: #9ca3af; font-size: 13px; font-family: 'Segoe UI', sans-serif;"
 
 STYLE_CONTENT_BUBBLE_BASE = """
@@ -211,6 +236,17 @@ STYLE_CONTENT_BUBBLE_BASE = """
     }
 """
 
+STYLE_LABEL_DIM = "color: #6b7280; font-size: 11px;"
+STYLE_LABEL_NORMAL = "color: #9ca3af; font-size: 12px; margin-bottom: 2px;"
+STYLE_LABEL_TITLE = f"font-weight: bold; font-size: 16px; color: {COLOR_ACCENT}; margin-bottom: 5px;"
+
+STYLE_LABEL_SESSION_TITLE = "background: transparent; color: #e6e8ee; font-size: 13px;"
+STYLE_LABEL_STATS = "color: #6b7280; font-size: 11px; font-family: Consolas, monospace;"
+STYLE_LABEL_STATUS_SMALL = "font-size: 11px; color: #6b7280;"
+
+STYLE_LABEL_SETTING_ITEM = "color: #e5e7eb; font-size: 13px; font-weight: 500;"
+
+# ================= Markdown 渲染样式 =================
 MARKDOWN_CSS = f"""
 <style>
 pre {{ 
@@ -228,11 +264,3 @@ p {{ margin-bottom: 8px; }}
 a {{ color: {COLOR_ACCENT}; text-decoration: none; }}
 </style>
 """
-
-
-STYLE_CHAT_INPUT_BAR = f"background-color: {COLOR_BG_DARK}; border-top: 1px solid {COLOR_BORDER};"
-
-
-STYLE_LABEL_DIM = "color: #6b7280; font-size: 11px;"
-STYLE_LABEL_NORMAL = "color: #9ca3af; font-size: 12px; margin-bottom: 2px;"
-STYLE_LABEL_TITLE = f"font-weight: bold; font-size: 16px; color: {COLOR_ACCENT}; margin-bottom: 5px;"

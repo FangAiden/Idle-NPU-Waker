@@ -17,7 +17,9 @@ from app.ui.resources import MORE_ICON_SVG
 from app.utils.styles import (
     STYLE_BTN_PRIMARY, STYLE_BTN_SECONDARY, STYLE_BTN_DANGER_DARK,
     STYLE_BTN_GHOST, STYLE_BTN_LINK, STYLE_LIST_WIDGET, STYLE_GROUP_BOX,
-    STYLE_COMBOBOX, STYLE_LABEL_NORMAL, STYLE_PROGRESS_BAR
+    STYLE_COMBOBOX, STYLE_LABEL_NORMAL, STYLE_PROGRESS_BAR,
+    STYLE_BTN_SESSION_MORE, STYLE_MENU_DARK, STYLE_SIDEBAR_BOTTOM_BAR,
+    STYLE_LABEL_SESSION_TITLE, STYLE_LABEL_STATS, STYLE_LABEL_STATUS_SMALL
 )
 import shutil
 import os
@@ -36,16 +38,13 @@ class SessionItemWidget(QWidget):
         layout.setSpacing(5)
 
         self.title_label = QLabel(title)
-        self.title_label.setStyleSheet("background: transparent; color: #e6e8ee; font-size: 13px;")
+        self.title_label.setStyleSheet(STYLE_LABEL_SESSION_TITLE)
         self.title_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         layout.addWidget(self.title_label, 1)
 
         self.btn_more = QPushButton()
         self.btn_more.setFixedSize(24, 24)
-        self.btn_more.setStyleSheet("""
-            QPushButton { background: transparent; border: none; border-radius: 4px; }
-            QPushButton:hover { background-color: #374151; }
-        """)
+        self.btn_more.setStyleSheet(STYLE_BTN_SESSION_MORE)
         pix = QPixmap()
         pix.loadFromData(MORE_ICON_SVG)
         self.btn_more.setIcon(QIcon(pix))
@@ -54,11 +53,7 @@ class SessionItemWidget(QWidget):
 
     def show_menu(self):
         menu = QMenu(self)
-        menu.setStyleSheet("""
-            QMenu { background-color: #1f2937; color: #e6e8ee; border: 1px solid #374151; }
-            QMenu::item { padding: 5px 20px; }
-            QMenu::item:selected { background-color: #374151; }
-        """)
+        menu.setStyleSheet(STYLE_MENU_DARK)
         
         act_rename = QAction(i18n.t("menu_rename_chat", "Rename"), self)
         act_rename.triggered.connect(lambda: self.sig_rename.emit(self.sid))
@@ -135,7 +130,7 @@ class ChatSidebar(QWidget):
         self.stack.addWidget(self.settings_panel)
 
         bottom_bar = QFrame()
-        bottom_bar.setStyleSheet("background-color: #0b0f19; border-top: 1px solid #1f2937;")
+        bottom_bar.setStyleSheet(STYLE_SIDEBAR_BOTTOM_BAR)
         bottom_layout = QHBoxLayout(bottom_bar)
         bottom_layout.setContentsMargins(10, 8, 10, 8)
         bottom_layout.setSpacing(10)
@@ -147,7 +142,7 @@ class ChatSidebar(QWidget):
         self.btn_toggle_view.setStyleSheet(STYLE_BTN_GHOST)
         
         self.lbl_stats_val = QLabel("--")
-        self.lbl_stats_val.setStyleSheet("color: #6b7280; font-size: 11px; font-family: Consolas, monospace;")
+        self.lbl_stats_val.setStyleSheet(STYLE_LABEL_STATS)
         self.lbl_stats_val.setWordWrap(False)
         self.lbl_stats_val.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         self.lbl_stats_val.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
@@ -202,7 +197,7 @@ class ChatSidebar(QWidget):
         dl_layout.addWidget(self.dl_progress)
         
         self.lbl_dl_status = QLabel()
-        self.lbl_dl_status.setStyleSheet("font-size: 11px; color: #6b7280;")
+        self.lbl_dl_status.setStyleSheet(STYLE_LABEL_STATUS_SMALL)
         self.lbl_dl_status.setWordWrap(True)
         dl_layout.addWidget(self.lbl_dl_status)
         
