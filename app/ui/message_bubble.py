@@ -21,14 +21,14 @@ except ImportError:
     HAS_MARKDOWN = False
 
 class MessageBubble(QWidget):
-    def __init__(self, text, is_user=False, parent=None):
+    def __init__(self, text, is_user=False, think_duration=None, parent=None):
         super().__init__(parent)
         self.is_user = is_user
         self.full_text = text
         self.thinking_expanded = True
         
         self.think_start_time = None
-        self.think_duration = None
+        self.think_duration = think_duration
         self.is_currently_thinking = False
         
         self.init_ui()
@@ -177,7 +177,9 @@ class MessageBubble(QWidget):
         is_thinking = False
 
         if match:
-            if self.think_start_time is None: self.think_start_time = time.time()
+            if self.think_duration is None and self.think_start_time is None: 
+                self.think_start_time = time.time()
+                
             think_content = match.group(1).strip()
             
             if re.search(r"<\s*/\s*think\s*>", text, re.IGNORECASE):

@@ -45,8 +45,8 @@ class ChatHistoryPanel(QWidget):
         
         self._stick_to_bottom = is_at_bottom
 
-    def add_bubble(self, text, is_user=False):
-        bubble = MessageBubble(text, is_user=is_user)
+    def add_bubble(self, text, is_user=False, think_duration=None):
+        bubble = MessageBubble(text, is_user=is_user, think_duration=think_duration)
         self.msg_layout.addWidget(bubble)
         self.scroll_to_bottom(smart=False)
         return bubble

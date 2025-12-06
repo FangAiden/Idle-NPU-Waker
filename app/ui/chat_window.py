@@ -182,8 +182,13 @@ class ChatWindow(QMainWindow):
 
     def on_generation_finished(self):
         self.input_bar.set_generating(False)
+        
+        think_duration = None
+        if self.current_ai_bubble and self.current_ai_bubble.think_duration is not None:
+            think_duration = self.current_ai_bubble.think_duration
+            
         self.current_ai_bubble = None
-        self.session_mgr.add_message("assistant", self.current_ai_buffer)
+        self.session_mgr.add_message("assistant", self.current_ai_buffer, think_duration=think_duration)
 
         try:
             duration = time.time() - self.gen_start_time
@@ -214,7 +219,8 @@ class ChatWindow(QMainWindow):
         self.history_panel.clear()
         history = self.session_mgr.get_current_history()
         for msg in history:
-            self.history_panel.add_bubble(msg["content"], is_user=(msg["role"]=="user"))
+            think_duration = msg.get("think_duration")
+            self.history_panel.add_bubble(msg["content"], is_user=(msg["role"]=="user"), think_duration=think_duration)
 
     def do_rename_session(self, sid, new_title):
         self.session_mgr.rename_session(sid, new_title)

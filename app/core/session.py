@@ -9,7 +9,6 @@ class SessionManager:
         self.sessions: Dict[str, dict] = {}
         self.current_session_id: Optional[str] = None
         
-        # 确定存储路径
         if getattr(sys, 'frozen', False):
             base_dir = os.path.dirname(sys.executable)
         else:
@@ -25,7 +24,6 @@ class SessionManager:
                 with open(self.storage_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                     self.sessions = data.get("sessions", {})
-                    # 恢复 current_session_id，如果存在的话
                     last_sid = data.get("current_session_id")
                     if last_sid and last_sid in self.sessions:
                         self.current_session_id = last_sid
@@ -66,16 +64,23 @@ class SessionManager:
             return self.sessions[self.current_session_id]["history"]
         return []
 
-    def add_message(self, role: str, content: str, sid: str = None):
+    def add_message(self, role: str, content: str, sid: str = None, **kwargs):
+        """
+        添加消息到历史记录
+        :param kwargs: 用于存储额外信息，如 think_duration
+        """
         target_sid = sid or self.current_session_id
         if target_sid and target_sid in self.sessions:
-            self.sessions[target_sid]["history"].append({"role": role, "content": content})
+            msg = {"role": role, "content": content}
+            if kwargs:
+                msg.update(kwargs)
+            
+            self.sessions[target_sid]["history"].append(msg)
             self._save_sessions()
 
     def update_title(self, title: str, sid: str = None) -> str:
         target_sid = sid or self.current_session_id
         if target_sid and target_sid in self.sessions:
-            # 如果标题太长，截断它
             short_title = title[:30] + ("..." if len(title) > 30 else "")
             self.sessions[target_sid]["title"] = short_title
             self._save_sessions()
