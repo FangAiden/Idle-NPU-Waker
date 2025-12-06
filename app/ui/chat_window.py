@@ -1,21 +1,17 @@
 import time
 from pathlib import Path
 from PyQt6.QtWidgets import (QMainWindow, QHBoxLayout, QVBoxLayout, QWidget, QMessageBox, QSplitter)
-from PyQt6.QtCore import Qt, QThread, pyqtSignal, QFileSystemWatcher
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QIcon, QPixmap
 
 from app.core.llm_worker import AIWorker
-from app.core.downloader import DownloadManager
-from app.core.runtime import RuntimeState
 from app.core.session import SessionManager
-from app.config import MODELS_DIR, DOWNLOAD_CACHE_DIR 
-from app.utils.scanner import scan_dirs
-from app.utils.styles import MAIN_STYLESHEET
-
+from app.core.runtime import RuntimeState
 from app.ui.sidebar import ChatSidebar
 from app.ui.chat_widgets import ChatHistoryPanel, ChatInputBar
 from app.ui.resources import APP_ICON_SVG
 from app.core.i18n import i18n
+from app.utils.styles import MAIN_STYLESHEET
 
 class ChatWindow(QMainWindow):
     sig_worker_load = pyqtSignal(str, str, str, str)
@@ -154,7 +150,7 @@ class ChatWindow(QMainWindow):
 
         if self.current_ai_bubble:
             self.current_ai_bubble.update_text(self.current_ai_buffer)
-            self.history_panel.scroll_to_bottom()
+            self.history_panel.scroll_to_bottom(smart=True)
 
         now = time.time()
         if now - self.gen_start_time > 0.1:

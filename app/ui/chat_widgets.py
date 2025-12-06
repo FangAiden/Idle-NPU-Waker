@@ -21,6 +21,10 @@ class ChatHistoryPanel(QWidget):
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setStyleSheet(STYLE_SCROLL_AREA)
         
+        self.v_scrollbar = self.scroll_area.verticalScrollBar()
+        self.v_scrollbar.valueChanged.connect(self._on_scroll_changed)
+        self._stick_to_bottom = True
+        
         self.msg_container = QWidget()
         self.msg_container.setStyleSheet("background-color: transparent;")
         
@@ -32,10 +36,19 @@ class ChatHistoryPanel(QWidget):
         self.scroll_area.setWidget(self.msg_container)
         layout.addWidget(self.scroll_area)
 
+    def _on_scroll_changed(self, value):
+        """检测用户是否手动滚动离开了底部区域"""
+        if not self.v_scrollbar: return
+        
+        dist_to_bottom = self.v_scrollbar.maximum() - value
+        is_at_bottom = dist_to_bottom <= 20
+        
+        self._stick_to_bottom = is_at_bottom
+
     def add_bubble(self, text, is_user=False):
         bubble = MessageBubble(text, is_user=is_user)
         self.msg_layout.addWidget(bubble)
-        self.scroll_to_bottom()
+        self.scroll_to_bottom(smart=False)
         return bubble
 
     def clear(self):
@@ -44,9 +57,16 @@ class ChatHistoryPanel(QWidget):
             if item.widget():
                 item.widget().deleteLater()
 
-    def scroll_to_bottom(self):
-        QTimer.singleShot(10, lambda: self.scroll_area.verticalScrollBar().setValue(
-            self.scroll_area.verticalScrollBar().maximum()
+    def scroll_to_bottom(self, smart=False):
+        """
+        滚动到底部
+        :param smart: 如果为 True，则只有在用户原本就在底部时才滚动（防打扰模式）
+        """
+        if smart and not self._stick_to_bottom:
+            return
+
+        QTimer.singleShot(10, lambda: self.v_scrollbar.setValue(
+            self.v_scrollbar.maximum()
         ))
 
 
