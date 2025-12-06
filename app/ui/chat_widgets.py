@@ -50,6 +50,11 @@ class ChatHistoryPanel(QWidget):
         self.btn_scroll_bottom.setIcon(QIcon(pix))
         self.btn_scroll_bottom.setIconSize(QSize(20, 20))
 
+    def showEvent(self, event):
+        """窗口显示事件：确保在界面完全显示后强制刷新一次气泡宽度"""
+        super().showEvent(event)
+        QTimer.singleShot(0, self._adjust_bubbles_width)
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         
@@ -65,6 +70,8 @@ class ChatHistoryPanel(QWidget):
     def _adjust_bubbles_width(self):
         """让所有气泡响应当前窗口宽度"""
         viewport_width = self.scroll_area.viewport().width()
+        if viewport_width <= 0: return
+
         available_width = viewport_width - 40
         
         for i in range(self.msg_layout.count()):
@@ -91,7 +98,7 @@ class ChatHistoryPanel(QWidget):
         bubble = MessageBubble(text, is_user=is_user, think_duration=think_duration)
         
         viewport_width = self.scroll_area.viewport().width()
-        if viewport_width > 0:
+        if viewport_width > 40:
             bubble.adjust_width(viewport_width - 40)
             
         self.msg_layout.addWidget(bubble)

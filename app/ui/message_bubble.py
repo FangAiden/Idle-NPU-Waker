@@ -4,7 +4,7 @@ import time
 from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
                              QPushButton, QApplication, QFrame, QSizePolicy)
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QIcon, QPixmap, QDesktopServices
+from PyQt6.QtGui import QIcon, QPixmap, QDesktopServices, QTransform
 from PyQt6.QtCore import QUrl
 from app.ui.resources import AI_AVATAR_SVG, USER_AVATAR_SVG, COPY_ICON_SVG, CHEVRON_ICON_SVG
 from app.ui.widgets import Toast
@@ -114,13 +114,13 @@ class MessageBubble(QWidget):
 
     def adjust_width(self, parent_width):
         """根据父容器宽度动态调整气泡最大宽度"""
-        ai_max_width = int(parent_width * RATIO_BUBBLE_AI)
+        ai_target_width = int(parent_width * RATIO_BUBBLE_AI)
         
         if self.is_user:
-            user_max_width = int(ai_max_width * RATIO_BUBBLE_USER)
-            self.content_container.setMaximumWidth(user_max_width)
+            user_target_width = int(ai_target_width * RATIO_BUBBLE_USER)
+            self.content_container.setFixedWidth(user_target_width)
         else:
-            self.content_container.setMaximumWidth(ai_max_width)
+            self.content_container.setFixedWidth(ai_target_width)
 
     def open_link(self, url):
         QDesktopServices.openUrl(QUrl(url))
