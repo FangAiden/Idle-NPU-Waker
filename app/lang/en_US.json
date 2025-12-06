@@ -86,6 +86,8 @@
     "opt_enabled": "Enabled",
     "msg_already_loaded": "Already Loaded",
 
+    "msg_copied": "Copied successfully",
+
     "menu_rename_chat": "Rename",
     "dialog_rename_title": "Rename Chat",
     "dialog_rename_msg": "Enter new chat name:"

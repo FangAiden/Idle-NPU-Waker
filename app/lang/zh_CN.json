@@ -84,6 +84,8 @@
     "opt_enabled": "启用",
     "msg_already_loaded": "模型已加载",
 
+    "msg_copied": "复制成功",
+
     "menu_rename_chat": "重命名",
     "dialog_rename_title": "重命名会话",
     "dialog_rename_msg": "请输入新的会话名称:"

@@ -1,7 +1,6 @@
 """
 统一的样式定义文件
 包含了颜色常量和所有 Qt 控件的 QSS 样式表。
-整合了原 app/utils/styles.py 以及分散在 sidebar.py, chat_window.py 等文件中的硬编码样式。
 """
 
 # ================= 颜色定义 =================
@@ -17,6 +16,10 @@ COLOR_BUBBLE_USER = "#1e2842"
 COLOR_BUBBLE_AI = "#2d3748"
 COLOR_THINK_BG = "#1a1e24"
 COLOR_THINK_BORDER = "#4b5563"
+
+# ================= 尺寸比例定义 =================
+RATIO_BUBBLE_AI = 0.90
+RATIO_BUBBLE_USER = 0.60
 
 # ================= 全局样式 =================
 MAIN_STYLESHEET = f"""
@@ -106,6 +109,21 @@ STYLE_BTN_THINK_TOGGLE = """
 STYLE_BTN_SESSION_MORE = """
     QPushButton { background: transparent; border: none; border-radius: 4px; }
     QPushButton:hover { background-color: #374151; }
+"""
+
+STYLE_BTN_SCROLL_BOTTOM = f"""
+    QPushButton {{
+        background-color: {COLOR_BG_PANEL};
+        border: 1px solid {COLOR_BORDER};
+        border-radius: 20px;
+        color: {COLOR_TEXT_SECONDARY};
+        padding: 0px;
+    }}
+    QPushButton:hover {{
+        background-color: #374151;
+        color: {COLOR_ACCENT};
+        border-color: {COLOR_ACCENT};
+    }}
 """
 
 # ================= 输入与控制控件样式 =================
@@ -214,7 +232,6 @@ STYLE_PROGRESS_BAR = f"""
 """
 
 STYLE_SPLITTER = "QSplitter::handle { background-color: #1e2842; }"
-
 STYLE_SIDEBAR_BOTTOM_BAR = "background-color: #0b0f19; border-top: 1px solid #1f2937;"
 
 STYLE_MENU_DARK = """
@@ -239,12 +256,24 @@ STYLE_CONTENT_BUBBLE_BASE = """
 STYLE_LABEL_DIM = "color: #6b7280; font-size: 11px;"
 STYLE_LABEL_NORMAL = "color: #9ca3af; font-size: 12px; margin-bottom: 2px;"
 STYLE_LABEL_TITLE = f"font-weight: bold; font-size: 16px; color: {COLOR_ACCENT}; margin-bottom: 5px;"
-
 STYLE_LABEL_SESSION_TITLE = "background: transparent; color: #e6e8ee; font-size: 13px;"
 STYLE_LABEL_STATS = "color: #6b7280; font-size: 11px; font-family: Consolas, monospace;"
 STYLE_LABEL_STATUS_SMALL = "font-size: 11px; color: #6b7280;"
-
 STYLE_LABEL_SETTING_ITEM = "color: #e5e7eb; font-size: 13px; font-weight: 500;"
+
+# ================= Toast 样式 =================
+STYLE_TOAST = """
+    QLabel {
+        background-color: rgba(31, 41, 55, 230);
+        border: 1px solid #374151;
+        color: #e6e8ee;
+        padding: 10px 20px;
+        border-radius: 8px;
+        font-size: 13px;
+        font-family: 'Segoe UI', sans-serif;
+        font-weight: bold;
+    }
+"""
 
 # ================= Markdown 渲染样式 =================
 MARKDOWN_CSS = f"""

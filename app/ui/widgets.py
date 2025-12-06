@@ -1,12 +1,43 @@
 from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QSlider, QSpinBox, 
-                             QDoubleSpinBox, QPlainTextEdit, QComboBox)
-from PyQt6.QtCore import Qt
-from app.utils.styles import STYLE_SLIDER, STYLE_SPINBOX, STYLE_TEXT_AREA, STYLE_COMBOBOX
+                             QDoubleSpinBox, QPlainTextEdit, QComboBox, QLabel, QApplication)
+from PyQt6.QtCore import Qt, QTimer
+from app.utils.styles import (
+    STYLE_SLIDER, STYLE_SPINBOX, STYLE_TEXT_AREA, STYLE_COMBOBOX, STYLE_TOAST
+)
 
-# [新增] 禁用滚轮的 ComboBox
+class Toast(QLabel):
+    def __init__(self, text, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose)
+        
+        self.setStyleSheet(STYLE_TOAST)
+        
+        self.setText(text)
+        self.adjustSize()
+        
+        QTimer.singleShot(2000, self.close)
+
+    def show_notification(self):
+        """显示在父窗口的右上角"""
+        if not self.parent():
+            self.show()
+            return
+
+        parent_rect = self.parent().rect()
+        
+        margin_right = 30
+        margin_top = 40
+        
+        x = parent_rect.width() - self.width() - margin_right
+        y = margin_top
+        
+        self.move(x, y)
+        self.show()
+        self.raise_()
+
 class NoScrollComboBox(QComboBox):
     def wheelEvent(self, event):
-        # 忽略事件，使其冒泡给父容器（滚动区域），实现“只滚动页面，不改数值”
         event.ignore()
 
 class NoScrollSpinBox(QSpinBox):

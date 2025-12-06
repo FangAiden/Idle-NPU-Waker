@@ -1,11 +1,13 @@
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, 
                              QLineEdit, QPushButton, QStackedWidget)
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
+from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QSize
+from PyQt6.QtGui import QIcon, QPixmap
 from app.ui.message_bubble import MessageBubble
+from app.ui.resources import CHEVRON_ICON_SVG
 from app.core.i18n import i18n
 from app.utils.styles import (
     STYLE_BTN_PRIMARY, STYLE_BTN_DANGER, STYLE_INPUT_BOX, 
-    STYLE_SCROLL_AREA, STYLE_CHAT_INPUT_BAR
+    STYLE_SCROLL_AREA, STYLE_CHAT_INPUT_BAR, STYLE_BTN_SCROLL_BOTTOM
 )
 
 class ChatHistoryPanel(QWidget):
@@ -14,8 +16,8 @@ class ChatHistoryPanel(QWidget):
         self.init_ui()
 
     def init_ui(self):
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        self.layout_main = QVBoxLayout(self)
+        self.layout_main.setContentsMargins(0, 0, 0, 0)
 
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
@@ -34,21 +36,66 @@ class ChatHistoryPanel(QWidget):
         self.msg_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         self.scroll_area.setWidget(self.msg_container)
-        layout.addWidget(self.scroll_area)
+        self.layout_main.addWidget(self.scroll_area)
+
+        self.btn_scroll_bottom = QPushButton(self)
+        self.btn_scroll_bottom.setFixedSize(40, 40)
+        self.btn_scroll_bottom.setStyleSheet(STYLE_BTN_SCROLL_BOTTOM)
+        self.btn_scroll_bottom.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_scroll_bottom.clicked.connect(lambda: self.scroll_to_bottom(force=True))
+        self.btn_scroll_bottom.hide()
+        
+        pix = QPixmap()
+        pix.loadFromData(CHEVRON_ICON_SVG)
+        self.btn_scroll_bottom.setIcon(QIcon(pix))
+        self.btn_scroll_bottom.setIconSize(QSize(20, 20))
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        
+        padding = 20
+        scroll_width = self.v_scrollbar.width() if self.v_scrollbar.isVisible() else 0
+        x = self.width() - self.btn_scroll_bottom.width() - padding - scroll_width
+        y = self.height() - self.btn_scroll_bottom.height() - padding
+        self.btn_scroll_bottom.move(x, y)
+        self.btn_scroll_bottom.raise_()
+
+        self._adjust_bubbles_width()
+
+    def _adjust_bubbles_width(self):
+        """让所有气泡响应当前窗口宽度"""
+        viewport_width = self.scroll_area.viewport().width()
+        available_width = viewport_width - 40
+        
+        for i in range(self.msg_layout.count()):
+            item = self.msg_layout.itemAt(i)
+            widget = item.widget()
+            if isinstance(widget, MessageBubble):
+                widget.adjust_width(available_width)
 
     def _on_scroll_changed(self, value):
-        """检测用户是否手动滚动离开了底部区域"""
         if not self.v_scrollbar: return
         
-        dist_to_bottom = self.v_scrollbar.maximum() - value
-        is_at_bottom = dist_to_bottom <= 20
+        max_val = self.v_scrollbar.maximum()
+        dist_to_bottom = max_val - value
+        is_at_bottom = dist_to_bottom <= 50
         
         self._stick_to_bottom = is_at_bottom
+        
+        if not is_at_bottom and max_val > 0:
+            self.btn_scroll_bottom.show()
+        else:
+            self.btn_scroll_bottom.hide()
 
     def add_bubble(self, text, is_user=False, think_duration=None):
         bubble = MessageBubble(text, is_user=is_user, think_duration=think_duration)
+        
+        viewport_width = self.scroll_area.viewport().width()
+        if viewport_width > 0:
+            bubble.adjust_width(viewport_width - 40)
+            
         self.msg_layout.addWidget(bubble)
-        self.scroll_to_bottom(smart=False)
+        self.scroll_to_bottom(force=False)
         return bubble
 
     def clear(self):
@@ -57,12 +104,13 @@ class ChatHistoryPanel(QWidget):
             if item.widget():
                 item.widget().deleteLater()
 
-    def scroll_to_bottom(self, smart=False):
+    def scroll_to_bottom(self, smart=False, force=False):
         """
         滚动到底部
         :param smart: 如果为 True，则只有在用户原本就在底部时才滚动（防打扰模式）
+        :param force: 强制滚动到底部（用于按钮点击）
         """
-        if smart and not self._stick_to_bottom:
+        if smart and not self._stick_to_bottom and not force:
             return
 
         QTimer.singleShot(10, lambda: self.v_scrollbar.setValue(

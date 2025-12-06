@@ -4,14 +4,16 @@ import time
 from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
                              QPushButton, QApplication, QFrame, QSizePolicy)
 from PyQt6.QtCore import Qt, QSize
-from PyQt6.QtGui import QIcon, QPixmap, QTransform, QDesktopServices
+from PyQt6.QtGui import QIcon, QPixmap, QDesktopServices
 from PyQt6.QtCore import QUrl
 from app.ui.resources import AI_AVATAR_SVG, USER_AVATAR_SVG, COPY_ICON_SVG, CHEVRON_ICON_SVG
+from app.ui.widgets import Toast
 from app.core.i18n import i18n
 from app.utils.styles import (
     STYLE_BTN_THINK_TOGGLE, STYLE_THINK_FRAME, STYLE_THINK_LABEL,
     STYLE_CONTENT_BUBBLE_BASE, STYLE_BTN_ICON_ONLY, MARKDOWN_CSS,
-    COLOR_BUBBLE_USER, COLOR_BUBBLE_AI
+    COLOR_BUBBLE_USER, COLOR_BUBBLE_AI, 
+    RATIO_BUBBLE_AI, RATIO_BUBBLE_USER
 )
 
 try:
@@ -101,16 +103,24 @@ class MessageBubble(QWidget):
             layout.addWidget(self.btn_copy, alignment=Qt.AlignmentFlag.AlignBottom)
             layout.addWidget(self.content_container)
             layout.addWidget(self.avatar_lbl, alignment=Qt.AlignmentFlag.AlignTop)
-            self.content_container.setMaximumWidth(650)
         else:
             layout.addWidget(self.avatar_lbl, alignment=Qt.AlignmentFlag.AlignTop)
             layout.addWidget(self.content_container)
             layout.addWidget(self.btn_copy, alignment=Qt.AlignmentFlag.AlignBottom)
             layout.addStretch()
-            self.content_container.setFixedWidth(750) 
 
         self.update_display_text(self.full_text)
         self.update_toggle_icon()
+
+    def adjust_width(self, parent_width):
+        """根据父容器宽度动态调整气泡最大宽度"""
+        ai_max_width = int(parent_width * RATIO_BUBBLE_AI)
+        
+        if self.is_user:
+            user_max_width = int(ai_max_width * RATIO_BUBBLE_USER)
+            self.content_container.setMaximumWidth(user_max_width)
+        else:
+            self.content_container.setMaximumWidth(ai_max_width)
 
     def open_link(self, url):
         QDesktopServices.openUrl(QUrl(url))
@@ -218,3 +228,5 @@ class MessageBubble(QWidget):
             
     def copy_text(self):
         QApplication.clipboard().setText(self.full_text)
+        toast = Toast(i18n.t("msg_copied", "Copied successfully"), self.window())
+        toast.show_notification()
