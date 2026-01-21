@@ -443,7 +443,10 @@ async function loadMessages(sessionId) {
 }
 
 function renderMessages(messages) {
-    currentMessages = (messages || []).map(msg => ({ ...msg }));
+    currentMessages = (messages || []).map(msg => ({
+        ...msg,
+        content: normalizeMessageContent(msg.content)
+    }));
     if (messages.length === 0) {
         welcomeScreen.classList.remove('hidden');
         messagesDiv.innerHTML = '';
@@ -455,6 +458,39 @@ function renderMessages(messages) {
         });
         scrollToBottom();
     }
+}
+
+function normalizeMessageContent(content) {
+    if (content === null || content === undefined) return '';
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+        return content.map((item) => {
+            if (item === null || item === undefined) return '';
+            if (typeof item === 'string') return item;
+            if (typeof item === 'object') {
+                if (typeof item.text === 'string') return item.text;
+                if (typeof item.content === 'string') return item.content;
+                if (typeof item.value === 'string') return item.value;
+                try {
+                    return JSON.stringify(item);
+                } catch (err) {
+                    return String(item);
+                }
+            }
+            return String(item);
+        }).join('');
+    }
+    if (typeof content === 'object') {
+        if (typeof content.text === 'string') return content.text;
+        if (typeof content.content === 'string') return content.content;
+        if (typeof content.value === 'string') return content.value;
+        try {
+            return JSON.stringify(content);
+        } catch (err) {
+            return String(content);
+        }
+    }
+    return String(content);
 }
 
 function appendMessage(role, content, scroll = true, index = null) {
@@ -566,7 +602,7 @@ function truncateMessages(keepCount) {
 async function handleCopyMessage(index) {
     const msg = getMessageByIndex(index);
     if (!msg) return;
-    const text = msg.content || '';
+    const text = normalizeMessageContent(msg.content);
     try {
         await navigator.clipboard.writeText(text);
         showToast(t('msg_copied', 'Copied successfully'));
@@ -592,7 +628,7 @@ function handleEditMessage(index) {
     editingIndex = index;
     pendingAttachments = [];
     renderAttachments();
-    messageInput.value = msg.content || '';
+    messageInput.value = normalizeMessageContent(msg.content);
     autoResize(messageInput);
     messageInput.focus();
 }
@@ -741,21 +777,45 @@ async function regenerateAssistant() {
 function setupMarkdown() {
     if (markdownReady || typeof marked === 'undefined') return;
     const renderer = new marked.Renderer();
-    renderer.html = (html) => escapeHtml(html);
+    renderer.html = (html) => {
+        const text = html && typeof html === 'object' ? html.text : html;
+        return escapeHtml(text || '');
+    };
     renderer.code = (code, infostring) => {
-        const lang = (infostring || '').trim().toLowerCase();
-        const escaped = escapeHtml(code);
-        if (lang === 'mermaid') {
+        let text = code;
+        let lang = infostring;
+        if (code && typeof code === 'object') {
+            text = code.text;
+            lang = code.lang || code.language;
+        }
+        const safeText = text == null ? '' : String(text);
+        const safeLang = lang == null ? '' : String(lang);
+        const langLabel = safeLang.trim().toLowerCase();
+        const escaped = escapeHtml(safeText);
+        if (langLabel === 'mermaid') {
             return `<div class="mermaid">${escaped}</div>`;
         }
-        const langClass = lang ? `language-${lang}` : '';
+        const langClass = langLabel ? `language-${langLabel}` : '';
         return `<pre><code class="${langClass}">${escaped}</code></pre>`;
     };
     renderer.link = (href, title, text) => {
-        const safeHref = escapeHtml(href || '');
-        const safeText = escapeHtml(text || '');
-        const safeTitle = title ? ` title="${escapeHtml(title)}"` : '';
-        return `<a href="${safeHref}"${safeTitle} target="_blank" rel="noopener noreferrer">${safeText}</a>`;
+        let url = href;
+        let linkTitle = title;
+        let labelHtml = '';
+        if (href && typeof href === 'object') {
+            url = href.href;
+            linkTitle = href.title;
+            if (href.tokens && this.parser) {
+                labelHtml = this.parser.parseInline(href.tokens);
+            } else {
+                labelHtml = escapeHtml(href.text || '');
+            }
+        } else {
+            labelHtml = escapeHtml(text || '');
+        }
+        const safeHref = escapeHtml(url || '');
+        const safeTitle = linkTitle ? ` title="${escapeHtml(linkTitle)}"` : '';
+        return `<a href="${safeHref}"${safeTitle} target="_blank" rel="noopener noreferrer">${labelHtml}</a>`;
     };
     marked.setOptions({
         gfm: true,
@@ -811,13 +871,14 @@ function extractThink(content) {
 }
 
 function formatContent(content, role = 'assistant') {
-    if (!content) return '';
+    const normalized = normalizeMessageContent(content);
+    if (!normalized) return '';
     // User messages: plain text, no markdown
     if (role === 'user') {
-        return escapeHtml(content).replace(/\n/g, '<br>');
+        return escapeHtml(normalized).replace(/\n/g, '<br>');
     }
     // Assistant messages: render markdown
-    const { think, main, thinkingOpen } = extractThink(content);
+    const { think, main, thinkingOpen } = extractThink(normalized);
     let html = '';
     if (think) {
         const statusKey = thinkingOpen ? 'think_status_running' : 'think_status_done';
