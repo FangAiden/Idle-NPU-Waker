@@ -70,8 +70,9 @@ class RuntimeState:
         model_id: Optional[str] = None,
         model_dir: Optional[str] = None,
         device: Optional[str] = None,
+        max_prompt_len: int = 16384,
     ) -> Tuple[str, str]:
-        
+
         want_source = model_source or self.model_source
         want_id     = model_id or self.model_id
         want_dir    = model_dir or self.model_dir
@@ -107,11 +108,16 @@ class RuntimeState:
             raise e
         
         dev = want_device if want_device in AVAILABLE_DEVICES else "AUTO"
-        
+
         log_to_file(f"Initializing LLMPipeline on {dev}...")
         try:
-            pipe = ov_genai.LLMPipeline(str_path, device=dev)
-            log_to_file("LLMPipeline created successfully.")
+            # NPU needs MAX_PROMPT_LEN for longer conversations
+            if dev == "NPU" or (dev == "AUTO" and "NPU" in AVAILABLE_DEVICES):
+                pipe = ov_genai.LLMPipeline(str_path, device=dev, MAX_PROMPT_LEN=max_prompt_len)
+                log_to_file(f"LLMPipeline created with MAX_PROMPT_LEN={max_prompt_len}")
+            else:
+                pipe = ov_genai.LLMPipeline(str_path, device=dev)
+                log_to_file("LLMPipeline created successfully.")
         except Exception as e:
             log_to_file(f"ERROR: Pipeline init failed on {dev}: {e}")
             log_to_file("Attempting fallback to CPU...")

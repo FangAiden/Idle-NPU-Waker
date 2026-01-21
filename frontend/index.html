@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Idle NPU Waker</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <button class="new-chat-btn" id="newChatBtn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    <span data-i18n="btn_new_chat">New Chat</span>
+                </button>
+            </div>
+            <div class="sessions-list" id="sessionsList"></div>
+            <div class="sidebar-footer">
+                <div class="lang-switcher">
+                    <button class="lang-btn" id="langBtn">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <circle cx="12" cy="12" r="10"></circle>
+                            <line x1="2" y1="12" x2="22" y2="12"></line>
+                            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+                        </svg>
+                        <span id="currentLangLabel">English</span>
+                    </button>
+                    <div class="lang-dropdown hidden" id="langDropdown">
+                        <button class="lang-option" data-lang="en_US">English</button>
+                        <button class="lang-option" data-lang="zh_CN">简体中文</button>
+                    </div>
+                </div>
+                <button class="settings-btn" id="openSettingsBtn">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"></circle>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                    </svg>
+                    <span data-i18n="btn_settings">Settings</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Mobile sidebar toggle -->
+        <button class="sidebar-toggle" id="sidebarToggle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="3" y1="12" x2="21" y2="12"></line>
+                <line x1="3" y1="6" x2="21" y2="6"></line>
+                <line x1="3" y1="18" x2="21" y2="18"></line>
+            </svg>
+        </button>
+
+        <!-- Main Chat Area -->
+        <main class="main-content">
+            <!-- Model Status Bar -->
+            <div class="model-bar" id="modelBar">
+                <div class="model-status">
+                    <span class="status-dot" id="statusDot"></span>
+                    <span id="modelStatus" data-i18n="status_no_model">No model loaded</span>
+                </div>
+                <div class="model-bar-actions">
+                    <div class="gen-stats hidden" id="genStats">
+                        <span class="gen-stat"><span id="genTokens">0</span> tokens</span>
+                        <span class="gen-stat-sep">·</span>
+                        <span class="gen-stat"><span id="genSpeed">0</span> t/s</span>
+                        <span class="gen-stat-sep">·</span>
+                        <span class="gen-stat"><span id="genTime">0</span>s</span>
+                    </div>
+                    <button class="npu-monitor-btn" id="npuMonitorBtn" title="NPU Monitor">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
+                        </svg>
+                        <span id="npuUtilText">--</span>
+                    </button>
+                    <button class="load-model-btn" id="loadModelBtn" data-i18n="btn_load_model">Load Model</button>
+                </div>
+            </div>
+
+            <!-- NPU Monitor Panel -->
+            <div class="npu-monitor-panel hidden" id="npuMonitorPanel">
+                <div class="npu-monitor-header">
+                    <span data-i18n="npu_monitor_title">NPU Monitor</span>
+                    <button class="close-btn" id="closeNpuMonitorBtn">&times;</button>
+                </div>
+                <div class="npu-monitor-content">
+                    <div class="npu-current">
+                        <span data-i18n="npu_utilization">Utilization</span>: <span id="npuCurrentValue">0</span>%
+                    </div>
+                    <canvas id="npuChart" width="400" height="150"></canvas>
+                    <div class="npu-status" id="npuStatus"></div>
+                </div>
+            </div>
+
+            <!-- Chat Messages -->
+            <div class="chat-container" id="chatContainer">
+                <div class="welcome-screen" id="welcomeScreen">
+                    <h1 data-i18n="app_title">Idle NPU Waker</h1>
+                    <p data-i18n="tip_load_model_first">Load a model to start chatting</p>
+                </div>
+                <div class="messages" id="messages"></div>
+            </div>
+
+            <!-- Input Area -->
+            <div class="input-area">
+                <div class="attachments-bar hidden" id="attachmentsBar">
+                    <span class="attachments-label" data-i18n="label_attachments">Attachments</span>
+                    <div class="attachments-list" id="attachmentsList"></div>
+                </div>
+                <div class="input-container">
+                    <textarea
+                        id="messageInput"
+                        data-i18n-placeholder="input_placeholder"
+                        placeholder="Send a message..."
+                        rows="1"
+                        disabled
+                    ></textarea>
+                    <button class="attach-btn" id="attachBtn" title="Attach">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 12.5V8a5 5 0 0 0-10 0v9a3 3 0 0 0 6 0V9"></path>
+                            <path d="M16 12v5a4 4 0 0 1-8 0V7a6 6 0 0 1 12 0v5"></path>
+                        </svg>
+                    </button>
+                    <button class="send-btn" id="sendBtn" disabled title="Send">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <line x1="22" y1="2" x2="11" y2="13"></line>
+                            <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+                        </svg>
+                    </button>
+                    <button class="stop-btn hidden" id="stopBtn" title="Stop">
+                        <svg viewBox="0 0 24 24" fill="currentColor">
+                            <rect x="6" y="6" width="12" height="12" rx="2"></rect>
+                        </svg>
+                    </button>
+                </div>
+                <input type="file" id="fileInput" class="hidden" multiple>
+            </div>
+        </main>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay hidden" id="settingsModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 data-i18n="btn_settings">Settings</h2>
+                <button class="close-btn" id="closeSettingsBtn">&times;</button>
+            </div>
+            <div class="modal-content">
+                <div class="settings-tabs">
+                    <button class="tab-btn active" data-tab="model" data-i18n="tab_model">Model</button>
+                    <button class="tab-btn" data-tab="generation" data-i18n="grp_generation">Generation</button>
+                    <button class="tab-btn" data-tab="context" data-i18n="grp_context">Context</button>
+                </div>
+
+                <div class="tab-content active" id="tab-model">
+                    <div class="setting-group">
+                        <label data-i18n="label_model_source">Model Source</label>
+                        <select id="modelSource">
+                            <option value="local" data-i18n="opt_local_models">Local Models</option>
+                            <option value="preset" data-i18n="opt_preset_models">Preset Models</option>
+                        </select>
+                    </div>
+                    <div class="setting-group" id="localModelGroup">
+                        <label data-i18n="label_model">Local Model</label>
+                        <select id="localModelSelect">
+                            <option value="" data-i18n="opt_select_model">-- Select a model --</option>
+                        </select>
+                        <button class="refresh-btn" id="refreshModelsBtn" data-i18n="btn_refresh">Refresh</button>
+                    </div>
+                    <div class="setting-group hidden" id="presetModelGroup">
+                        <label data-i18n="label_preset_model">Preset Model</label>
+                        <select id="presetModelSelect">
+                            <option value="" data-i18n="opt_select_model">-- Select a model --</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label data-i18n="label_device">Device</label>
+                        <select id="deviceSelect">
+                            <option value="AUTO">AUTO</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label><span data-i18n="conf_max_prompt_len">Max Prompt Length</span>: <span id="maxPromptLenValue">16384</span></label>
+                        <input type="range" id="maxPromptLen" min="1024" max="32768" step="1024" value="16384">
+                    </div>
+                    <button class="primary-btn" id="loadModelConfirmBtn" data-i18n="btn_load_model">Load Model</button>
+                    <div class="download-progress hidden" id="downloadProgress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                        <span id="downloadStatus" data-i18n="status_downloading">Downloading...</span>
+                        <button class="cancel-btn" id="cancelDownloadBtn" data-i18n="btn_cancel">Cancel</button>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-generation">
+                    <div class="setting-group" data-setting-key="max_new_tokens">
+                        <label><span data-i18n="conf_max_tokens">Max Tokens</span>: <span id="maxTokensValue">1024</span></label>
+                        <input type="range" id="maxTokens" min="128" max="8192" step="128" value="1024">
+                    </div>
+                    <div class="setting-group" data-setting-key="temperature">
+                        <label><span data-i18n="conf_temp">Temperature</span>: <span id="temperatureValue">0.7</span></label>
+                        <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.7">
+                    </div>
+                    <div class="setting-group" data-setting-key="top_p">
+                        <label><span data-i18n="conf_top_p">Top P</span>: <span id="topPValue">0.9</span></label>
+                        <input type="range" id="topP" min="0" max="1" step="0.05" value="0.9">
+                    </div>
+                    <div class="setting-group" data-setting-key="top_k">
+                        <label><span data-i18n="conf_top_k">Top K</span>: <span id="topKValue">40</span></label>
+                        <input type="number" id="topK" min="1" max="100" value="40">
+                    </div>
+                    <div class="setting-group" data-setting-key="repetition_penalty">
+                        <label><span data-i18n="conf_rep_penalty">Repetition Penalty</span>: <span id="repPenaltyValue">1.1</span></label>
+                        <input type="range" id="repPenalty" min="1" max="2" step="0.1" value="1.1">
+                    </div>
+                    <div class="setting-group checkbox-group" data-setting-key="do_sample">
+                        <label>
+                            <input type="checkbox" id="doSample" checked>
+                            <span data-i18n="conf_do_sample">Enable Sampling</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="tab-content" id="tab-context">
+                    <div class="setting-group" data-setting-key="max_history_turns">
+                        <label><span data-i18n="conf_history_turns">Max History Turns</span>: <span id="historyTurnsValue">10</span></label>
+                        <input type="range" id="historyTurns" min="0" max="50" step="1" value="10">
+                    </div>
+                    <div class="setting-group" data-setting-key="system_prompt">
+                        <label data-i18n="conf_sys_prompt">System Prompt</label>
+                        <textarea id="systemPrompt" rows="4">You are a helpful AI assistant.</textarea>
+                    </div>
+                    <div class="setting-group checkbox-group" data-setting-key="enable_thinking">
+                        <label>
+                            <input type="checkbox" id="enableThinking" checked>
+                            <span data-i18n="conf_enable_thinking">Enable Thinking</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Rename Modal -->
+    <div class="modal-overlay hidden" id="renameModal">
+        <div class="modal small-modal">
+            <div class="modal-header">
+                <h2 data-i18n="dialog_rename_title">Rename Chat</h2>
+                <button class="close-btn" id="closeRenameBtn">&times;</button>
+            </div>
+            <div class="modal-content">
+                <input type="text" id="renameInput" data-i18n-placeholder="dialog_rename_msg" placeholder="Enter new name">
+                <div class="modal-actions">
+                    <button class="secondary-btn" id="cancelRenameBtn" data-i18n="btn_cancel">Cancel</button>
+                    <button class="primary-btn" id="confirmRenameBtn" data-i18n="menu_rename_chat">Rename</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div class="toast hidden" id="toast"></div>
+
+    <script src="/static/vendor/marked.min.js"></script>
+    <script src="/static/vendor/mermaid.min.js"></script>
+    <script src="/static/app.js"></script>
+</body>
+</html>

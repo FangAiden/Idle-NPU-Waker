@@ -1,8 +1,10 @@
 import multiprocessing
+import time
 import traceback
 import openvino_genai as ov_genai
 from app.core.runtime import RuntimeState
 from app.config import DEFAULT_CONFIG
+from app.utils.config_loader import resolve_supported_setting_keys
 
 def llm_process_entry(cmd_queue, res_queue, stop_event):
     """
@@ -24,8 +26,8 @@ def llm_process_entry(cmd_queue, res_queue, stop_event):
             
             if cmd_type == "load":
                 try:
-                    src, mid, path, dev = cmd["args"]
-                    final_path, final_dev = runtime.ensure_loaded(src, mid, path, dev)
+                    src, mid, path, dev, max_prompt_len = cmd["args"]
+                    final_path, final_dev = runtime.ensure_loaded(src, mid, path, dev, max_prompt_len)
                     res_queue.put({"type": "loaded", "mid": mid, "dev": final_dev})
                 except Exception as e:
                     res_queue.put({"type": "error", "msg": f"Load Error: {str(e)}"})
@@ -50,7 +52,14 @@ def llm_process_entry(cmd_queue, res_queue, stop_event):
                 for k in ["system_prompt", "max_history_turns", "skip_special_tokens"]:
                     if k in gen_params: gen_params.pop(k)
 
-                try:      
+                supported_keys = resolve_supported_setting_keys(
+                    model_name=runtime.model_path.name if runtime.model_path else None,
+                    model_path=str(runtime.model_path) if runtime.model_path else None
+                )
+                if supported_keys:
+                    gen_params = {k: v for k, v in gen_params.items() if k in supported_keys}
+
+                try:
                     prompt = runtime.tokenizer.apply_chat_template(
                         messages,
                         add_generation_prompt=add_gen_prompt
@@ -62,22 +71,35 @@ def llm_process_entry(cmd_queue, res_queue, stop_event):
                     if add_gen_prompt:
                         prompt += "<|im_start|>assistant\n"
 
+                token_count = 0
+                start_time = time.time()
+
                 def streamer_cb(sub_text):
+                    nonlocal token_count
                     if stop_event.is_set():
                         return True
-                    
+                    token_count += 1
                     res_queue.put({"type": "token", "token": sub_text})
                     return False
 
                 try:
                     gen_cfg = ov_genai.GenerationConfig(**gen_params)
                     streamer = ov_genai.TextStreamer(runtime.tokenizer, streamer_cb)
-                    
+
                     runtime.pipe.generate(prompt, generation_config=gen_cfg, streamer=streamer)
                 except Exception as e:
                     res_queue.put({"type": "error", "msg": f"Gen Error: {str(e)}"})
                 finally:
-                    res_queue.put({"type": "finished"})
+                    elapsed = time.time() - start_time
+                    speed = token_count / elapsed if elapsed > 0 else 0
+                    res_queue.put({
+                        "type": "finished",
+                        "stats": {
+                            "tokens": token_count,
+                            "time": round(elapsed, 2),
+                            "speed": round(speed, 2)
+                        }
+                    })
 
         except Exception as e:
             res_queue.put({"type": "error", "msg": f"Process Crash: {str(e)}"})

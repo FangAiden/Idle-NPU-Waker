@@ -132,6 +132,7 @@ class ChatSidebar(QWidget):
 
     def on_model_selection_changed(self, name, path):
         """当 RunPanel 选择了新模型，更新 SettingsPanel"""
+        self.settings_panel.apply_supported_settings(name, path)
         self.settings_panel.apply_preset(name)
         if path:
             try:

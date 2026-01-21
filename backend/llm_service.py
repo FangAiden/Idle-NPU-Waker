@@ -1,0 +1,148 @@
+import multiprocessing
+import queue
+import threading
+from typing import Dict, Optional, Tuple
+
+from app.core.llm_process import llm_process_entry
+
+
+class LLMService:
+    def __init__(self) -> None:
+        self._ctx = multiprocessing.get_context("spawn")
+        self._cmd_queue = self._ctx.Queue()
+        self._res_queue = self._ctx.Queue()
+        self._stop_event = self._ctx.Event()
+
+        self._process = None
+        self._monitor_thread = None
+
+        self._lock = threading.Lock()
+        self._load_event = threading.Event()
+        self._load_result: Optional[Dict[str, object]] = None
+
+        self._active_generation = False
+        self._generation_queue: Optional[queue.Queue] = None
+        self._generation_done = threading.Event()
+
+        self._model_loaded = False
+        self._model_path: Optional[str] = None
+        self._device: Optional[str] = None
+
+    def _start_process_if_needed(self) -> None:
+        if self._process is None or not self._process.is_alive():
+            self._process = self._ctx.Process(
+                target=llm_process_entry,
+                args=(self._cmd_queue, self._res_queue, self._stop_event),
+                daemon=True,
+            )
+            self._process.start()
+            self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+            self._monitor_thread.start()
+
+    def _monitor_loop(self) -> None:
+        while True:
+            try:
+                msg = self._res_queue.get()
+            except (EOFError, BrokenPipeError):
+                break
+            except Exception:
+                continue
+
+            msg_type = msg.get("type")
+
+            if msg_type == "loaded":
+                with self._lock:
+                    self._device = msg.get("dev")
+                    self._load_result = {"ok": True, "dev": self._device or "AUTO"}
+                    self._load_event.set()
+                continue
+
+            if msg_type == "token":
+                if self._generation_queue is not None:
+                    self._generation_queue.put({"type": "token", "token": msg.get("token", "")})
+                continue
+
+            if msg_type == "finished":
+                if self._generation_queue is not None:
+                    stats = msg.get("stats", {})
+                    self._generation_queue.put({"type": "done", "stats": stats})
+                    self._generation_done.set()
+                continue
+
+            if msg_type == "error":
+                if self._generation_queue is not None:
+                    self._generation_queue.put({"type": "error", "msg": msg.get("msg", "Unknown error")})
+                    self._generation_done.set()
+                else:
+                    with self._lock:
+                        self._load_result = {"ok": False, "error": msg.get("msg", "Unknown error")}
+                        self._load_event.set()
+
+    def load_model(
+        self, source: str, model_id: str, model_dir: str, device: str, max_prompt_len: int = 16384
+    ) -> Tuple[str, str]:
+        with self._lock:
+            if self._active_generation:
+                raise RuntimeError("Generation in progress")
+
+            self._start_process_if_needed()
+            self._load_event.clear()
+            self._load_result = None
+            self._model_path = model_dir
+
+            self._cmd_queue.put(
+                {"type": "load", "args": (source, model_id, model_dir, device, max_prompt_len)}
+            )
+
+        if not self._load_event.wait(timeout=300):
+            raise RuntimeError("Model load timed out")
+
+        if not self._load_result or not self._load_result.get("ok"):
+            error_msg = "Model load failed"
+            if self._load_result and self._load_result.get("error"):
+                error_msg = self._load_result["error"]
+            raise RuntimeError(error_msg)
+
+        self._model_loaded = True
+        return (self._model_path or "", self._device or "AUTO")
+
+    def generate(self, messages, config):
+        with self._lock:
+            if not self._model_loaded:
+                raise RuntimeError("Model not loaded")
+            if self._active_generation:
+                raise RuntimeError("Generation already running")
+
+            self._start_process_if_needed()
+            self._active_generation = True
+            self._generation_queue = queue.Queue()
+            self._generation_done.clear()
+
+            self._cmd_queue.put(
+                {"type": "generate", "messages": messages, "config": config}
+            )
+
+        return self._generation_queue, self._generation_done
+
+    def finish_generation(self) -> None:
+        with self._lock:
+            self._active_generation = False
+            self._generation_queue = None
+            self._generation_done.clear()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+
+    def shutdown(self) -> None:
+        with self._lock:
+            self._active_generation = False
+            self._generation_queue = None
+            self._generation_done.clear()
+
+        if self._process:
+            try:
+                self._cmd_queue.put(None)
+                self._process.join(timeout=1)
+            finally:
+                if self._process.is_alive():
+                    self._process.terminate()

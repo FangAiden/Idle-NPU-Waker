@@ -3,16 +3,15 @@ import html
 import time
 from PyQt6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
                              QPushButton, QApplication, QFrame, QSizePolicy)
-from PyQt6.QtCore import Qt, QSize
+from PyQt6.QtCore import Qt, QSize, pyqtSignal, QUrl
 from PyQt6.QtGui import QIcon, QPixmap, QDesktopServices, QTransform
-from PyQt6.QtCore import QUrl
-from app.ui.resources import AI_AVATAR_SVG, USER_AVATAR_SVG, COPY_ICON_SVG, CHEVRON_ICON_SVG
+from app.ui.resources import AI_AVATAR_SVG, USER_AVATAR_SVG, CHEVRON_ICON_SVG
 from app.ui.widgets import Toast
 from app.core.i18n import i18n
 from app.utils.styles import (
     STYLE_BTN_THINK_TOGGLE, STYLE_THINK_FRAME, STYLE_THINK_LABEL,
-    STYLE_CONTENT_BUBBLE_BASE, STYLE_BTN_ICON_ONLY, MARKDOWN_CSS,
-    COLOR_BUBBLE_USER, COLOR_BUBBLE_AI, 
+    STYLE_CONTENT_BUBBLE_BASE, STYLE_BTN_LINK, MARKDOWN_CSS,
+    COLOR_BUBBLE_USER, COLOR_BUBBLE_AI,
     RATIO_BUBBLE_AI, RATIO_BUBBLE_USER
 )
 
@@ -23,10 +22,14 @@ except ImportError:
     HAS_MARKDOWN = False
 
 class MessageBubble(QWidget):
-    def __init__(self, text, is_user=False, think_duration=None, parent=None):
+    sig_edit_requested = pyqtSignal(int)
+    sig_retry_requested = pyqtSignal(int)
+
+    def __init__(self, text, is_user=False, think_duration=None, message_index=None, parent=None):
         super().__init__(parent)
         self.is_user = is_user
         self.full_text = text
+        self.message_index = message_index
         self.thinking_expanded = True
         
         self.think_start_time = None
@@ -75,6 +78,8 @@ class MessageBubble(QWidget):
         self.think_lbl = QLabel()
         self.think_lbl.setWordWrap(True)
         self.think_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.think_lbl.setOpenExternalLinks(True)
+        self.think_lbl.linkActivated.connect(self.open_link)
         self.think_lbl.setStyleSheet(STYLE_THINK_LABEL)
         think_layout.addWidget(self.think_lbl)
         self.content_layout.addWidget(self.think_frame)
@@ -89,28 +94,50 @@ class MessageBubble(QWidget):
         self.content_lbl.setStyleSheet(STYLE_CONTENT_BUBBLE_BASE + f"QLabel {{ background-color: {bg_color}; }}")
         self.content_layout.addWidget(self.content_lbl)
 
+        self.actions_container = QWidget()
+        actions_layout = QHBoxLayout(self.actions_container)
+        actions_layout.setContentsMargins(0, 0, 0, 0)
+        actions_layout.setSpacing(8)
+
         self.btn_copy = QPushButton()
-        self.btn_copy.setFixedSize(24, 24)
         self.btn_copy.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_copy.setStyleSheet(STYLE_BTN_ICON_ONLY)
-        cp_pix = QPixmap()
-        cp_pix.loadFromData(COPY_ICON_SVG)
-        self.btn_copy.setIcon(QIcon(cp_pix))
+        self.btn_copy.setStyleSheet(STYLE_BTN_LINK)
         self.btn_copy.clicked.connect(self.copy_text)
+
+        self.btn_edit = QPushButton()
+        self.btn_edit.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_edit.setStyleSheet(STYLE_BTN_LINK)
+        self.btn_edit.clicked.connect(self._on_edit_clicked)
+
+        self.btn_retry = QPushButton()
+        self.btn_retry.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_retry.setStyleSheet(STYLE_BTN_LINK)
+        self.btn_retry.clicked.connect(self._on_retry_clicked)
+
+        if self.is_user:
+            actions_layout.addStretch()
+            actions_layout.addWidget(self.btn_edit)
+            actions_layout.addWidget(self.btn_copy)
+        else:
+            actions_layout.addWidget(self.btn_copy)
+            actions_layout.addWidget(self.btn_retry)
+            actions_layout.addStretch()
+
+        self.content_layout.addWidget(self.actions_container)
 
         if self.is_user:
             layout.addStretch()
-            layout.addWidget(self.btn_copy, alignment=Qt.AlignmentFlag.AlignBottom)
             layout.addWidget(self.content_container)
             layout.addWidget(self.avatar_lbl, alignment=Qt.AlignmentFlag.AlignTop)
         else:
             layout.addWidget(self.avatar_lbl, alignment=Qt.AlignmentFlag.AlignTop)
             layout.addWidget(self.content_container)
-            layout.addWidget(self.btn_copy, alignment=Qt.AlignmentFlag.AlignBottom)
             layout.addStretch()
 
         self.update_display_text(self.full_text)
         self.update_toggle_icon()
+        self.update_action_texts()
+        self.set_message_index(self.message_index)
 
     def adjust_width(self, parent_width):
         """根据父容器宽度动态调整气泡最大宽度"""
@@ -141,6 +168,7 @@ class MessageBubble(QWidget):
 
     def refresh_ui_text(self):
         """Called when language changes"""
+        self.update_action_texts()
         if not self.btn_think_toggle.isVisible() and len(self.full_text) < 20: 
              self.update_display_text(self.full_text)
         
@@ -168,15 +196,51 @@ class MessageBubble(QWidget):
         self.full_text = new_text
         self.update_display_text(new_text)
 
+    def set_message_index(self, index):
+        self.message_index = index
+        has_index = index is not None and index >= 0
+        if self.is_user:
+            self.btn_edit.setEnabled(has_index)
+        else:
+            self.btn_retry.setEnabled(has_index)
+
+    def update_action_texts(self):
+        if self.is_user:
+            self.btn_edit.setText(i18n.t("btn_edit", "Edit"))
+            self.btn_copy.setText(i18n.t("btn_copy", "Copy"))
+        else:
+            self.btn_copy.setText(i18n.t("btn_copy", "Copy"))
+            self.btn_retry.setText(i18n.t("btn_retry", "Retry"))
+
+    def _on_edit_clicked(self):
+        if self.message_index is None:
+            return
+        self.sig_edit_requested.emit(self.message_index)
+
+    def _on_retry_clicked(self):
+        if self.message_index is None:
+            return
+        self.sig_retry_requested.emit(self.message_index)
+
     def update_display_text(self, text):
         if not text: return
         
         current_thinking_msg = i18n.t("msg_thinking")
         
+        if self.is_user:
+            self.btn_think_toggle.setVisible(False)
+            self.think_frame.setVisible(False)
+            self.content_lbl.setVisible(True)
+            self.content_lbl.setTextFormat(Qt.TextFormat.PlainText)
+            self.content_lbl.setText(text)
+            self.actions_container.setVisible(True)
+            return
+
         if text == current_thinking_msg or text == "思考中...":
             self.content_lbl.setText(f"<i style='color:#888'>{current_thinking_msg}</i>")
             self.btn_think_toggle.setVisible(False)
             self.think_frame.setVisible(False)
+            self.actions_container.setVisible(False)
             return
 
         think_pattern = re.compile(r"<\s*think\s*>(.*?)(?:<\s*/\s*think\s*>|$)", re.DOTALL | re.IGNORECASE)
@@ -203,12 +267,18 @@ class MessageBubble(QWidget):
         if think_content:
             self.btn_think_toggle.setVisible(True)
             if self.thinking_expanded: self.think_frame.setVisible(True)
-            safe_think = html.escape(think_content).replace("\n", "<br>")
-            
+
             self.update_status_text(is_thinking)
-            
-            if is_thinking: safe_think += " <span style='color:#5aa9ff'>▌</span>"
-            self.think_lbl.setText(safe_think)
+
+            if HAS_MARKDOWN:
+                html_content = markdown.markdown(think_content, extensions=['fenced_code', 'nl2br'])
+                self.think_lbl.setTextFormat(Qt.TextFormat.RichText)
+                self.think_lbl.setText(MARKDOWN_CSS + html_content)
+            else:
+                safe_think = html.escape(think_content).replace("\n", "<br>")
+                self.think_lbl.setTextFormat(Qt.TextFormat.RichText)
+                self.think_lbl.setText(safe_think)
+
         else:
             self.btn_think_toggle.setVisible(False)
             self.think_frame.setVisible(False)
@@ -223,8 +293,10 @@ class MessageBubble(QWidget):
             else:
                 self.content_lbl.setTextFormat(Qt.TextFormat.MarkdownText)
                 self.content_lbl.setText(main_content)
+            self.actions_container.setVisible(True)
         else:
             self.content_lbl.setVisible(False)
+            self.actions_container.setVisible(False)
             
     def copy_text(self):
         QApplication.clipboard().setText(self.full_text)

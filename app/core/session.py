@@ -92,3 +92,31 @@ class SessionManager:
         if sid in self.sessions:
             self.sessions[sid]["title"] = new_title
             self._save_sessions()
+
+    def edit_message(self, index: int, content: str, sid: str = None) -> bool:
+        target_sid = sid or self.current_session_id
+        if not target_sid or target_sid not in self.sessions:
+            return False
+
+        history = self.sessions[target_sid].get("history", [])
+        if index < 0 or index >= len(history):
+            return False
+
+        history[index]["content"] = content
+        self._save_sessions()
+        return True
+
+    def truncate_history(self, end_index: int, sid: str = None) -> bool:
+        target_sid = sid or self.current_session_id
+        if not target_sid or target_sid not in self.sessions:
+            return False
+
+        history = self.sessions[target_sid].get("history", [])
+        if end_index < 0:
+            end_index = 0
+        if end_index > len(history):
+            end_index = len(history)
+
+        self.sessions[target_sid]["history"] = history[:end_index]
+        self._save_sessions()
+        return True

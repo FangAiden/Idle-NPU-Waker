@@ -1,0 +1,28 @@
+{
+    "defaults": {
+        "mode": "all",
+        "app_keys": [
+            "system_prompt",
+            "max_history_turns",
+            "add_generation_prompt",
+            "enable_thinking",
+            "skip_special_tokens"
+        ]
+    },
+    "models": {
+        "OpenVINO/Qwen3-8B-int4-cw-ov": {
+            "aliases": [
+                "Qwen3-8B-int4-cw-ov"
+            ],
+            "mode": "auto",
+            "app_keys": [
+                "system_prompt",
+                "max_history_turns",
+                "add_generation_prompt"
+            ],
+            "include": [
+                "max_new_tokens"
+            ]
+        }
+    }
+}

@@ -91,6 +91,14 @@ pip install -r requirements.txt
 python main.py
 ```
 
+### 3b. Run Frontend + Backend (Web UI)
+
+```bash
+python backend/server.py
+```
+
+Open `http://127.0.0.1:8000` in your browser. The API is available under `/api`.
+
 ### 4. Build EXE (Optional)
 
 The project includes a one‑click build script that automatically handles  

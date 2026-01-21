@@ -1,40 +1,55 @@
 {
     "app_title": "Idle NPU Waker",
-    
+
     "btn_new_chat": "+ New Chat",
     "group_download": "Download Model (ModelScope)",
     "placeholder_repo": "Select or Enter Model ID...",
     "btn_download": "Download",
     "btn_pause": "Pause",
     "btn_cancel": "Cancel",
+    "btn_refresh": "Refresh",
     "btn_clear_cache": "Clear Cache",
     "status_ready": "Ready",
     "status_downloading": "Downloading: {0}",
     "status_cleaning": "Cleaning...",
     "status_loading_model": "Loading: {0}",
-    "status_loaded": "✅ Loaded ({0})",
-    
+    "status_loaded": "Loaded ({0})",
+    "status_no_model": "No model loaded",
+
     "group_run": "Runtime Settings",
-    "label_device": "Device:",
-    "label_model": "Local Model:",
+    "label_device": "Device",
+    "label_model": "Local Model",
+    "label_model_source": "Model Source",
+    "label_preset_model": "Preset Model",
     "label_language": "Language:",
     "btn_load_model": "Load Model",
-    
+    "conf_max_prompt_len": "Max Prompt Length (NPU)",
+
+    "opt_local_models": "Local Models",
+    "opt_preset_models": "Preset Models",
+    "opt_select_model": "-- Select a model --",
+
+    "tab_model": "Model",
+
     "input_placeholder": "Type a message (Enter to send)...",
     "btn_send": "Send",
     "btn_stop": "Stop",
+    "btn_attach": "Attach File",
+    "btn_copy": "Copy",
+    "btn_edit": "Edit",
+    "btn_retry": "Retry",
     "default_chat_name": "New Chat",
-    
+
     "msg_thinking": "Thinking...",
     "think_status_running": "Deep Thinking...",
     "think_status_done": "Thinking Process",
     "think_cost_pattern": "({0:.1f}s elapsed)",
     "think_duration_pattern": "({0:.1f}s)",
-    
-    "tip_load_model_first": "Please load a model first.",
-    
+
+    "tip_load_model_first": "Please load a model first",
+
     "menu_delete_chat": "Delete Chat",
-    
+
     "dialog_confirm_delete": "Confirm Delete",
     "dialog_delete_msg": "Are you sure you want to delete chat \"{0}\"?",
     "dialog_confirm_clear": "Confirm Clear",
@@ -47,10 +62,10 @@
     "dialog_loaded_title": "Ready",
     "dialog_loaded_msg": "Model loaded successfully ({0})",
     "dialog_error": "Error",
-    
+
     "crash_title": "Application Crash",
     "crash_message": "An unhandled exception occurred. See crash.log for details.\n\n{0}",
-    
+
     "dl_task_running": "Download task is running...",
     "dl_init_process": "Initializing download process...",
     "dl_paused": "Paused",
@@ -64,31 +79,42 @@
     "group_model_params": "Model Parameters",
     "btn_settings": "Settings",
     "btn_back_chat": "Back to Chat",
-    
-    "grp_generation": "Generation Control",
-    "grp_context": "Context & Dialog",
+
+    "grp_generation": "Generation",
+    "grp_context": "Context",
     "grp_advanced": "Advanced Settings",
 
     "conf_max_tokens": "Max Tokens",
     "conf_temp": "Temperature",
-    "conf_top_p": "Top-P Sampling",
-    "conf_top_k": "Top-K Sampling",
+    "conf_top_p": "Top-P",
+    "conf_top_k": "Top-K",
     "conf_rep_penalty": "Repetition Penalty",
     "conf_do_sample": "Enable Sampling",
-    
+
     "conf_history_turns": "History Turns",
     "conf_sys_prompt": "System Prompt",
-    
+
     "conf_add_gen_prompt": "Add Generation Prompt",
     "conf_enable_thinking": "Enable Deep Thinking",
     "conf_skip_special": "Skip Special Tokens",
-    
+
     "opt_enabled": "Enabled",
     "msg_already_loaded": "Already Loaded",
 
     "msg_copied": "Copied successfully",
+    "msg_file_attached": "Attached: {0}",
+    "msg_file_too_large": "File truncated: {0}",
+    "msg_file_read_failed": "Failed to read file: {0}",
+    "msg_file_skipped_binary": "Skipped binary file: {0}",
 
     "menu_rename_chat": "Rename",
     "dialog_rename_title": "Rename Chat",
-    "dialog_rename_msg": "Enter new chat name:"
+    "dialog_rename_msg": "Enter new chat name",
+    "label_attachments": "Attachments",
+    "btn_remove": "Remove",
+
+    "npu_monitor_title": "NPU Monitor",
+    "npu_utilization": "Utilization",
+    "npu_monitor_active": "Monitoring active",
+    "npu_monitor_unavailable": "NPU monitoring not available on this system"
 }

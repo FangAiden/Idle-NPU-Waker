@@ -6,6 +6,7 @@ from app.config import CONFIG_GROUPS
 from app.model_configs import MODEL_SPECIFIC_CONFIGS 
 from app.core.i18n import i18n
 from app.ui.widgets import SliderControl, TextAreaControl, NoScrollSpinBox, NoScrollDoubleSpinBox
+from app.utils.config_loader import resolve_supported_setting_keys
 from app.utils.styles import (
     STYLE_SCROLL_AREA, STYLE_CHECKBOX, STYLE_SPINBOX, STYLE_LABEL_TITLE, 
     STYLE_GROUP_BOX, STYLE_LABEL_SETTING_ITEM
@@ -15,6 +16,11 @@ class ModelSettingsPanel(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.config_widgets = {}
+        self.config_groups = CONFIG_GROUPS
+        self.supported_keys = None
+        self.all_setting_keys = set()
+        for group in CONFIG_GROUPS:
+            self.all_setting_keys.update(group.get("options", {}).keys())
         self.init_ui()
         i18n.language_changed.connect(self.update_texts)
 
@@ -50,7 +56,7 @@ class ModelSettingsPanel(QWidget):
             if item.widget(): item.widget().deleteLater()
         self.config_widgets.clear()
 
-        for group_def in CONFIG_GROUPS:
+        for group_def in self.config_groups:
             group_box = QGroupBox()
             group_box.setProperty("i18n_key", group_def["title_key"])
             group_box.setTitle(i18n.t(group_def["title_key"]))
@@ -81,6 +87,37 @@ class ModelSettingsPanel(QWidget):
                     group_layout.addWidget(item_container)
             
             self.container_layout.addWidget(group_box)
+
+    def _filter_groups(self, allowed_keys):
+        if not allowed_keys:
+            return CONFIG_GROUPS
+        filtered = []
+        for group_def in CONFIG_GROUPS:
+            options = {
+                key: meta
+                for key, meta in group_def.get("options", {}).items()
+                if key in allowed_keys
+            }
+            if options:
+                filtered.append({
+                    "title_key": group_def["title_key"],
+                    "options": options
+                })
+        return filtered
+
+    def apply_supported_settings(self, model_name, model_path):
+        allowed = resolve_supported_setting_keys(
+            model_name=model_name,
+            model_path=model_path,
+            all_setting_keys=self.all_setting_keys
+        )
+        allowed = set(allowed) if allowed else set(self.all_setting_keys)
+        if allowed == self.supported_keys:
+            return
+        self.supported_keys = allowed
+        self.config_groups = self._filter_groups(allowed)
+        self.build_form()
+        self.update_texts()
 
     def _create_widget(self, meta):
         w_type = meta.get("widget", "spin")
