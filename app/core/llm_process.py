@@ -27,7 +27,13 @@ def llm_process_entry(cmd_queue, res_queue, stop_event):
             if cmd_type == "load":
                 try:
                     src, mid, path, dev, max_prompt_len = cmd["args"]
-                    final_path, final_dev = runtime.ensure_loaded(src, mid, path, dev, max_prompt_len)
+
+                    def progress(stage: str, message: str) -> None:
+                        res_queue.put({"type": "load_stage", "stage": stage, "message": message})
+
+                    final_path, final_dev = runtime.ensure_loaded(
+                        src, mid, path, dev, max_prompt_len, progress_cb=progress
+                    )
                     res_queue.put({"type": "loaded", "mid": mid, "dev": final_dev})
                 except Exception as e:
                     res_queue.put({"type": "error", "msg": f"Load Error: {str(e)}"})

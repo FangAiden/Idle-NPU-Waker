@@ -68,3 +68,28 @@ MORE_ICON_SVG = b"""
   <path d="M5 13C5.5523 13 6 12.5523 6 12C6 11.4477 5.5523 11 5 11C4.4477 11 4 11.4477 4 12C4 12.5523 4.4477 13 5 13Z" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
 </svg>
 """
+
+# 侧边栏展开/收起图标
+SIDEBAR_COLLAPSE_ICON_SVG = b"""
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+  <line x1="9" y1="3" x2="9" y2="21"></line>
+  <polyline points="14 9 11 12 14 15"></polyline>
+</svg>
+"""
+
+SIDEBAR_EXPAND_ICON_SVG = b"""
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+  <line x1="9" y1="3" x2="9" y2="21"></line>
+  <polyline points="12 9 15 12 12 15"></polyline>
+</svg>
+"""
+
+# 临时对话图标
+TEMP_CHAT_ICON_SVG = b"""
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+  <line x1="9" y1="10" x2="15" y2="10"></line>
+</svg>
+"""

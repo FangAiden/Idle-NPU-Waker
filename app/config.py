@@ -16,6 +16,9 @@ MODELS_DIR.mkdir(parents=True, exist_ok=True)
 DOWNLOAD_CACHE_DIR = ROOT_DIR / ".download_temp"
 DOWNLOAD_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+OV_CACHE_DIR = ROOT_DIR / ".ov_cache"
+OV_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+
 DEFAULT_CONFIG = {
     "max_new_tokens": 1024,
     "temperature": 0.7,

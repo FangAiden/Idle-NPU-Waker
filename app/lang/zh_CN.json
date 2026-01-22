@@ -13,6 +13,19 @@
     "status_cleaning": "正在清理...",
     "status_loading_model": "加载中: {0}",
     "status_loaded": "已加载 ({0})",
+    "status_reload_required": "需要重新加载模型",
+    "status_model_memory": "模型内存",
+    "status_memory_private": "私有",
+    "status_memory_system": "系统",
+    "status_download": "下载",
+    "status_download_idle": "空闲",
+    "status_download_running": "下载中",
+    "load_stage_start": "准备中...",
+    "load_stage_tokenizer": "初始化分词器...",
+    "load_stage_pipeline": "编译模型...",
+    "load_stage_fallback": "回退到 CPU...",
+    "load_stage_ready": "模型就绪",
+    "load_stage_error": "加载失败",
     "status_no_model": "未加载模型",
 
     "group_run": "运行设置",
@@ -20,9 +33,14 @@
     "label_model": "本地模型",
     "label_model_source": "模型来源",
     "label_preset_model": "预设模型",
+    "label_download_model": "模型 ID",
     "label_language": "语言 / Language:",
     "btn_load_model": "加载模型",
-    "conf_max_prompt_len": "最大提示长度 (NPU)",
+    "btn_reload_model": "重新加载模型",
+    "model_switcher_select": "选择模型",
+    "model_switcher_empty": "没有本地模型",
+    "btn_open_download": "下载模型",
+    "conf_max_prompt_len": "最大上下文长度",
 
     "opt_local_models": "本地模型",
     "opt_preset_models": "预设模型",
@@ -46,6 +64,7 @@
     "think_duration_pattern": "（{0:.1f} 秒）",
 
     "tip_load_model_first": "请先加载模型",
+    "tip_start_chatting": "开始聊天吧",
 
     "menu_delete_chat": "删除会话",
     "dialog_confirm_delete": "确认删除",
@@ -114,5 +133,12 @@
     "npu_monitor_title": "NPU 监控",
     "npu_utilization": "利用率",
     "npu_monitor_active": "监控中",
-    "npu_monitor_unavailable": "此系统不支持NPU监控"
+    "npu_monitor_searching": "检测中...",
+    "npu_monitor_unavailable": "此系统不支持NPU监控",
+
+    "btn_temp_chat": "临时对话",
+    "temp_chat_name": "临时对话",
+    "temp_chat_tooltip": "临时对话不会保存历史记录",
+    "btn_collapse_sidebar": "收起侧边栏",
+    "btn_expand_sidebar": "展开侧边栏"
 }

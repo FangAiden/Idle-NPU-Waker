@@ -18,6 +18,12 @@ let markdownReady = false;
 let mermaidReady = false;
 let currentMessages = [];
 let editingIndex = null;
+let downloadRunning = false;
+let downloadAbortController = null;
+let loadedModelConfig = { path: '', device: 'AUTO', maxPromptLen: 16384 };
+let modelReloadRequired = false;
+const LAST_MODEL_KEY = 'last_model_config';
+let systemStatusInterval = null;
 
 // i18n State
 let currentLang = localStorage.getItem('lang') || 'en_US';
@@ -30,8 +36,10 @@ const LANG_LABELS = {
 // DOM Elements
 const sidebar = document.getElementById('sidebar');
 const sidebarToggle = document.getElementById('sidebarToggle');
+const sidebarCollapseBtn = document.getElementById('sidebarCollapseBtn');
 const sessionsList = document.getElementById('sessionsList');
 const newChatBtn = document.getElementById('newChatBtn');
+const tempChatBtn = document.getElementById('tempChatBtn');
 const chatContainer = document.getElementById('chatContainer');
 const welcomeScreen = document.getElementById('welcomeScreen');
 const messagesDiv = document.getElementById('messages');
@@ -44,7 +52,18 @@ const attachmentsBar = document.getElementById('attachmentsBar');
 const attachmentsList = document.getElementById('attachmentsList');
 const modelStatus = document.getElementById('modelStatus');
 const statusDot = document.getElementById('statusDot');
-const loadModelBtn = document.getElementById('loadModelBtn');
+const modelSwitcher = document.getElementById('modelSwitcher');
+const modelSwitcherBtn = document.getElementById('modelSwitcherBtn');
+const modelSwitcherMenu = document.getElementById('modelSwitcherMenu');
+const modelSwitcherList = document.getElementById('modelSwitcherList');
+const modelSwitcherName = document.getElementById('modelSwitcherName');
+const modelSwitcherManage = document.getElementById('modelSwitcherManage');
+const memoryStatus = document.getElementById('memoryStatus');
+const downloadStatusBadge = document.getElementById('downloadStatusBadge');
+const performancePanel = document.getElementById('performancePanel');
+const performancePanelHandle = document.getElementById('performancePanelHandle');
+const performancePanelToggleBtn = document.getElementById('performancePanelToggleBtn');
+const performancePanelCloseBtn = document.getElementById('performancePanelCloseBtn');
 const settingsModal = document.getElementById('settingsModal');
 const openSettingsBtn = document.getElementById('openSettingsBtn');
 const closeSettingsBtn = document.getElementById('closeSettingsBtn');
@@ -54,6 +73,23 @@ const closeRenameBtn = document.getElementById('closeRenameBtn');
 const cancelRenameBtn = document.getElementById('cancelRenameBtn');
 const confirmRenameBtn = document.getElementById('confirmRenameBtn');
 const toast = document.getElementById('toast');
+const appContainer = document.getElementById('appContainer');
+const welcomeOverlay = document.getElementById('welcomeOverlay');
+const welcomeLoadBtn = document.getElementById('welcomeLoadBtn');
+const welcomeDownloadBtn = document.getElementById('welcomeDownloadBtn');
+const welcomeLoading = document.getElementById('welcomeLoading');
+const welcomeLoadingText = document.getElementById('welcomeLoadingText');
+const welcomeLocalModelSelect = document.getElementById('welcomeLocalModelSelect');
+const welcomeDeviceSelect = document.getElementById('welcomeDeviceSelect');
+const welcomeMaxPromptLenInput = document.getElementById('welcomeMaxPromptLen');
+const welcomeMaxPromptLenValue = document.getElementById('welcomeMaxPromptLenValue');
+const welcomeRefreshModelsBtn = document.getElementById('welcomeRefreshModelsBtn');
+const openDownloadBtn = document.getElementById('openDownloadBtn');
+const downloadModal = document.getElementById('downloadModal');
+const closeDownloadBtn = document.getElementById('closeDownloadBtn');
+const downloadModelInput = document.getElementById('downloadModelInput');
+const downloadModelList = document.getElementById('downloadModelList');
+const downloadModelBtn = document.getElementById('downloadModelBtn');
 
 // Language Elements
 const langBtn = document.getElementById('langBtn');
@@ -61,11 +97,7 @@ const langDropdown = document.getElementById('langDropdown');
 const currentLangLabel = document.getElementById('currentLangLabel');
 
 // Settings Elements
-const modelSource = document.getElementById('modelSource');
-const localModelGroup = document.getElementById('localModelGroup');
-const presetModelGroup = document.getElementById('presetModelGroup');
 const localModelSelect = document.getElementById('localModelSelect');
-const presetModelSelect = document.getElementById('presetModelSelect');
 const deviceSelect = document.getElementById('deviceSelect');
 const refreshModelsBtn = document.getElementById('refreshModelsBtn');
 const loadModelConfirmBtn = document.getElementById('loadModelConfirmBtn');
@@ -146,12 +178,16 @@ function applyI18n() {
     if (attachBtn) {
         attachBtn.title = t('btn_attach', 'Attach File');
     }
+    updateWelcomeLoadingText();
 
     // Re-render sessions to update default names
     if (sessions.length > 0) {
         renderSessions();
     }
     renderAttachments();
+    setModelReloadRequired(modelReloadRequired);
+    updateModelSwitcherLabel();
+    updateSystemStatus();
 }
 
 function showToast(message, duration = 2000) {
@@ -160,6 +196,256 @@ function showToast(message, duration = 2000) {
     setTimeout(() => {
         toast.classList.add('hidden');
     }, duration);
+}
+
+function loadLastModelConfig() {
+    const raw = localStorage.getItem(LAST_MODEL_KEY);
+    if (!raw) return null;
+    try {
+        const data = JSON.parse(raw);
+        if (!data || !data.path) return null;
+        return data;
+    } catch (error) {
+        return null;
+    }
+}
+
+function saveLastModelConfig(path, device, maxPromptLen) {
+    if (!path) return;
+    const payload = {
+        path,
+        device: device || 'AUTO',
+        max_prompt_len: maxPromptLen || 16384,
+        ts: Date.now()
+    };
+    localStorage.setItem(LAST_MODEL_KEY, JSON.stringify(payload));
+}
+
+function setModelReloadRequired(required) {
+    modelReloadRequired = required;
+    if (!modelLoaded) return;
+    if (required) {
+        statusDot.className = 'status-dot warning';
+        modelStatus.textContent = t('status_reload_required', 'Reload required');
+        if (loadModelConfirmBtn) {
+            loadModelConfirmBtn.textContent = t('btn_reload_model', 'Reload Model');
+        }
+    } else {
+        statusDot.className = 'status-dot ready';
+        modelStatus.textContent = t('status_loaded', loadedModelConfig.device || 'AUTO');
+        if (loadModelConfirmBtn) {
+            loadModelConfirmBtn.textContent = t('btn_load_model', 'Load Model');
+        }
+    }
+}
+
+function updateReloadRequirement() {
+    if (!modelLoaded) {
+        setModelReloadRequired(false);
+        return;
+    }
+    const path = localModelSelect ? localModelSelect.value : '';
+    const device = deviceSelect ? deviceSelect.value : 'AUTO';
+    const maxPromptLen = maxPromptLenInput ? parseInt(maxPromptLenInput.value) : loadedModelConfig.maxPromptLen;
+    const needsReload = !!path && (
+        path !== (loadedModelConfig.path || '') ||
+        device !== (loadedModelConfig.device || 'AUTO') ||
+        maxPromptLen !== (loadedModelConfig.maxPromptLen || 0)
+    );
+    setModelReloadRequired(needsReload);
+}
+
+function formatBytes(bytes) {
+    if (!bytes || bytes <= 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let value = bytes;
+    let index = 0;
+    while (value >= 1024 && index < units.length - 1) {
+        value /= 1024;
+        index += 1;
+    }
+    return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[index]}`;
+}
+
+function updateModelMemoryStatus(model, mem) {
+    if (!memoryStatus) return;
+    const label = t('status_model_memory', 'Model Mem');
+    if (!model || !model.loaded) {
+        memoryStatus.textContent = `${label} --`;
+        memoryStatus.title = '';
+        memoryStatus.classList.remove('active');
+        return;
+    }
+    const rss = model.memory && typeof model.memory.rss === 'number' ? model.memory.rss : 0;
+    const privateBytes = model.memory && typeof model.memory.private === 'number' ? model.memory.private : 0;
+    memoryStatus.textContent = `${label} ${formatBytes(rss)}`;
+    const titleParts = [];
+    if (privateBytes > 0 && privateBytes !== rss) {
+        titleParts.push(`${t('status_memory_private', 'Private')} ${formatBytes(privateBytes)}`);
+    }
+    if (mem && typeof mem.percent === 'number') {
+        titleParts.push(`${t('status_memory_system', 'System')} ${Math.round(mem.percent)}% (${formatBytes(mem.used)} / ${formatBytes(mem.total)})`);
+    }
+    memoryStatus.title = titleParts.join(' | ');
+    memoryStatus.classList.add('active');
+}
+
+function updateDownloadStatusBadge(status) {
+    if (!downloadStatusBadge) return;
+    const label = t('status_download', 'Download');
+    if (!status || !status.running) {
+        downloadStatusBadge.textContent = `${label}: ${t('status_download_idle', 'Idle')}`;
+        downloadStatusBadge.title = '';
+        downloadStatusBadge.classList.remove('active');
+        return;
+    }
+    const percent = typeof status.percent === 'number' ? Math.round(status.percent) : 0;
+    const suffix = percent > 0 ? `${percent}%` : t('status_download_running', 'Running');
+    downloadStatusBadge.textContent = `${label} ${suffix}`;
+    downloadStatusBadge.title = status.file || status.message || status.repo_id || '';
+    downloadStatusBadge.classList.add('active');
+}
+
+function updateModelLoadStatus(model) {
+    if (!model || !model.loading) return;
+    if (modelReloadRequired) return;
+    const stage = model.load_stage || '';
+    const stageLabel = stage ? t(`load_stage_${stage}`, '') : '';
+    const message = stageLabel || model.load_message || stage || '';
+    const display = message || t('status_loading_model', '...');
+    statusDot.className = 'status-dot loading';
+    modelStatus.textContent = t('status_loading_model', display);
+    if (welcomeLoadingText) {
+        welcomeLoadingText.textContent = t('status_loading_model', display);
+    }
+}
+
+async function updateSystemStatus() {
+    try {
+        const response = await fetch(`${API_BASE}/api/status`);
+        if (!response.ok) return;
+        const data = await response.json();
+        updateModelLoadStatus(data.model);
+        updateModelMemoryStatus(data.model, data.memory);
+        updateDownloadStatusBadge(data.download);
+    } catch (error) {
+        // Ignore polling errors
+    }
+}
+
+function initSystemStatus() {
+    updateSystemStatus();
+    if (systemStatusInterval) {
+        clearInterval(systemStatusInterval);
+    }
+    systemStatusInterval = setInterval(updateSystemStatus, 2000);
+}
+
+function getModelDisplayName(path) {
+    if (!path) return t('model_switcher_select', 'Select model');
+    const match = localModels.find(model => model.path === path);
+    if (match && match.name) return match.name;
+    const parts = path.split(/[/\\\\]/);
+    return parts[parts.length - 1] || path;
+}
+
+function updateModelSwitcherLabel() {
+    if (!modelSwitcherName) return;
+    if (modelLoaded && loadedModelConfig.path) {
+        modelSwitcherName.textContent = getModelDisplayName(loadedModelConfig.path);
+    } else {
+        modelSwitcherName.textContent = t('model_switcher_select', 'Select model');
+    }
+}
+
+function renderModelSwitcherList() {
+    if (!modelSwitcherList) return;
+    modelSwitcherList.innerHTML = '';
+    if (!localModels || localModels.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'model-switcher-empty';
+        empty.textContent = t('model_switcher_empty', 'No local models');
+        modelSwitcherList.appendChild(empty);
+        return;
+    }
+
+    localModels.forEach(model => {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'model-switcher-item';
+        item.textContent = model.name;
+        item.dataset.path = model.path;
+        if (loadedModelConfig.path && model.path === loadedModelConfig.path) {
+            item.classList.add('active');
+        }
+        item.addEventListener('click', async () => {
+            closeModelSwitcher();
+            if (model.path === loadedModelConfig.path && modelLoaded && !modelReloadRequired) {
+                return;
+            }
+            await loadModelFromDropdown(model.path);
+        });
+        modelSwitcherList.appendChild(item);
+    });
+}
+
+function closeModelSwitcher() {
+    if (modelSwitcherMenu) {
+        modelSwitcherMenu.classList.add('hidden');
+    }
+    if (modelSwitcherBtn) {
+        modelSwitcherBtn.setAttribute('aria-expanded', 'false');
+    }
+}
+
+function toggleModelSwitcher() {
+    if (!modelSwitcherMenu || !modelSwitcherBtn) return;
+    const isHidden = modelSwitcherMenu.classList.contains('hidden');
+    if (isHidden) {
+        modelSwitcherMenu.classList.remove('hidden');
+        modelSwitcherBtn.setAttribute('aria-expanded', 'true');
+    } else {
+        closeModelSwitcher();
+    }
+}
+
+async function loadModelFromDropdown(modelPath) {
+    if (!modelPath) return;
+    localModelSelect.value = modelPath;
+    await updateSupportedSettingsForPath(modelPath);
+
+    const device = deviceSelect ? deviceSelect.value : 'AUTO';
+    const maxPromptLen = maxPromptLenInput ? parseInt(maxPromptLenInput.value) : 16384;
+
+    statusDot.className = 'status-dot loading';
+    modelStatus.textContent = t('status_loading_model', device);
+
+    try {
+        const response = await fetch(`${API_BASE}/api/models/load`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                source: 'local',
+                model_id: '',
+                path: modelPath,
+                device: device,
+                max_prompt_len: maxPromptLen
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to load model');
+        }
+
+        const data = await response.json();
+        applyLoadedModel(modelPath, data.device, maxPromptLen);
+        showToast(t('dialog_loaded_msg', data.device));
+    } catch (error) {
+        statusDot.className = 'status-dot';
+        modelStatus.textContent = t('dialog_error');
+        showToast(error.message);
+    }
 }
 
 function cacheSettingGroups() {
@@ -176,6 +462,32 @@ function applySupportedSettings(keys) {
     Object.entries(settingGroups).forEach(([key, el]) => {
         const supported = !supportedSettingKeys || supportedSettingKeys.has(key);
         el.classList.toggle('hidden', !supported);
+    });
+}
+
+function normalizePresetModels(models) {
+    const items = Array.isArray(models) ? models : [];
+    return items.map((item) => {
+        if (typeof item === 'string') {
+            return { id: item, label: item };
+        }
+        if (item && typeof item === 'object') {
+            const id = item.repo_id || item.id || item.name || '';
+            const label = item.name || item.repo_id || item.id || '';
+            if (id) return { id, label };
+        }
+        return null;
+    }).filter(Boolean);
+}
+
+function populateDownloadModelList() {
+    if (!downloadModelList) return;
+    downloadModelList.innerHTML = '';
+    presetModels.forEach((model) => {
+        const option = document.createElement('option');
+        option.value = model.id;
+        option.textContent = model.label;
+        downloadModelList.appendChild(option);
     });
 }
 
@@ -253,6 +565,75 @@ async function updateSupportedSettingsForPath(modelPath) {
     }
 }
 
+function applyLoadedModel(path, device, maxPromptLen) {
+    const safePath = path || '';
+    const safeDevice = device || 'AUTO';
+    const safeMaxPromptLen = Number.isFinite(maxPromptLen)
+        ? maxPromptLen
+        : (maxPromptLenInput ? parseInt(maxPromptLenInput.value) : 16384);
+
+    loadedModelConfig = {
+        path: safePath,
+        device: safeDevice,
+        maxPromptLen: safeMaxPromptLen
+    };
+    modelLoaded = true;
+    saveLastModelConfig(safePath, safeDevice, safeMaxPromptLen);
+
+    if (localModelSelect) localModelSelect.value = safePath;
+    if (welcomeLocalModelSelect) welcomeLocalModelSelect.value = safePath;
+    if (deviceSelect && deviceSelect.querySelector(`option[value="${safeDevice}"]`)) {
+        deviceSelect.value = safeDevice;
+    }
+    if (welcomeDeviceSelect && welcomeDeviceSelect.querySelector(`option[value="${safeDevice}"]`)) {
+        welcomeDeviceSelect.value = safeDevice;
+    }
+    if (maxPromptLenInput && maxPromptLenValue) {
+        maxPromptLenInput.value = safeMaxPromptLen;
+        maxPromptLenValue.textContent = safeMaxPromptLen;
+    }
+    if (welcomeMaxPromptLenInput && welcomeMaxPromptLenValue) {
+        welcomeMaxPromptLenInput.value = safeMaxPromptLen;
+        welcomeMaxPromptLenValue.textContent = safeMaxPromptLen;
+    }
+
+    messageInput.disabled = false;
+    sendBtn.disabled = false;
+    updateWelcomeOverlay();
+    setModelReloadRequired(false);
+    updateModelSwitcherLabel();
+    renderModelSwitcherList();
+}
+
+async function attemptAutoLoadLastModel() {
+    if (modelLoaded) return;
+    const lastConfig = loadLastModelConfig();
+    if (!lastConfig || !lastConfig.path) return;
+
+    const path = lastConfig.path;
+    const device = lastConfig.device || 'AUTO';
+    const maxPromptLen = parseInt(lastConfig.max_prompt_len, 10) || 16384;
+
+    if (localModelSelect) localModelSelect.value = path;
+    if (welcomeLocalModelSelect) welcomeLocalModelSelect.value = path;
+    if (deviceSelect && deviceSelect.querySelector(`option[value="${device}"]`)) {
+        deviceSelect.value = device;
+    }
+    if (welcomeDeviceSelect && welcomeDeviceSelect.querySelector(`option[value="${device}"]`)) {
+        welcomeDeviceSelect.value = device;
+    }
+    if (maxPromptLenInput && maxPromptLenValue) {
+        maxPromptLenInput.value = maxPromptLen;
+        maxPromptLenValue.textContent = maxPromptLen;
+    }
+    if (welcomeMaxPromptLenInput && welcomeMaxPromptLenValue) {
+        welcomeMaxPromptLenInput.value = maxPromptLen;
+        welcomeMaxPromptLenValue.textContent = maxPromptLen;
+    }
+
+    await loadModelFromWelcome();
+}
+
 // ============== Initialize ==============
 
 document.addEventListener('DOMContentLoaded', init);
@@ -260,11 +641,18 @@ document.addEventListener('DOMContentLoaded', init);
 async function init() {
     await loadI18n(currentLang);
     await loadConfig();
+    await restoreModelStatus();
+    if (!modelLoaded) {
+        attemptAutoLoadLastModel();
+    }
     await loadSessions();
     setupEventListeners();
     setupSettingsListeners();
     setupLangSwitcher();
     cacheSettingGroups();
+    initWelcomeOverlay();
+    initPerformancePanel();
+    initSystemStatus();
 }
 
 function setupLangSwitcher() {
@@ -289,31 +677,86 @@ function setupLangSwitcher() {
     });
 }
 
+function setWelcomeOverlayVisible(visible) {
+    if (!welcomeOverlay || !appContainer) return;
+    welcomeOverlay.classList.toggle('hidden', !visible);
+    appContainer.classList.toggle('welcome-locked', visible);
+}
+
+function updateWelcomeOverlay() {
+    setWelcomeOverlayVisible(!modelLoaded);
+}
+
+function initWelcomeOverlay() {
+    if (!welcomeOverlay) return;
+    updateWelcomeOverlay();
+    if (welcomeLocalModelSelect) {
+        welcomeLocalModelSelect.addEventListener('change', () => {
+            updateSupportedSettingsForPath(welcomeLocalModelSelect.value);
+        });
+    }
+    if (welcomeRefreshModelsBtn) {
+        welcomeRefreshModelsBtn.addEventListener('click', loadLocalModels);
+    }
+    if (welcomeMaxPromptLenInput && welcomeMaxPromptLenValue) {
+        welcomeMaxPromptLenInput.addEventListener('input', () => {
+            welcomeMaxPromptLenValue.textContent = welcomeMaxPromptLenInput.value;
+        });
+    }
+    if (welcomeLoadBtn) {
+        welcomeLoadBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            loadModelFromWelcome();
+        });
+    }
+    updateWelcomeLoadingText();
+}
+
+function updateWelcomeLoadingText() {
+    if (!welcomeLoadingText) return;
+    welcomeLoadingText.textContent = t('status_loading_model', '...');
+}
+
+function setWelcomeLoading(isLoading) {
+    if (welcomeLoading) {
+        welcomeLoading.classList.toggle('hidden', !isLoading);
+    }
+    if (welcomeLoadBtn) welcomeLoadBtn.disabled = isLoading;
+    if (welcomeDownloadBtn) welcomeDownloadBtn.disabled = isLoading;
+    if (welcomeLocalModelSelect) welcomeLocalModelSelect.disabled = isLoading;
+    if (welcomeDeviceSelect) welcomeDeviceSelect.disabled = isLoading;
+    if (welcomeMaxPromptLenInput) welcomeMaxPromptLenInput.disabled = isLoading;
+    if (welcomeRefreshModelsBtn) welcomeRefreshModelsBtn.disabled = isLoading;
+    if (isLoading) {
+        updateWelcomeLoadingText();
+    }
+}
+
 async function loadConfig() {
     try {
         const response = await fetch(`${API_BASE}/api/config`);
         const data = await response.json();
         config = data.default_config;
-        presetModels = data.preset_models || [];
+        presetModels = normalizePresetModels(data.preset_models || []);
         availableDevices = data.available_devices || ['AUTO'];
         maxFileBytes = data.max_file_bytes || maxFileBytes;
 
-        // Populate preset models
-        presetModelSelect.innerHTML = `<option value="" data-i18n="opt_select_model">${t('opt_select_model')}</option>`;
-        presetModels.forEach(model => {
-            const option = document.createElement('option');
-            option.value = model.repo_id;
-            option.textContent = model.name;
-            presetModelSelect.appendChild(option);
-        });
+        populateDownloadModelList();
 
         // Populate devices
-        deviceSelect.innerHTML = '';
+        if (deviceSelect) deviceSelect.innerHTML = '';
+        if (welcomeDeviceSelect) welcomeDeviceSelect.innerHTML = '';
         availableDevices.forEach(device => {
             const option = document.createElement('option');
             option.value = device;
             option.textContent = device;
-            deviceSelect.appendChild(option);
+            if (deviceSelect) deviceSelect.appendChild(option);
+            if (welcomeDeviceSelect) {
+                const welcomeOption = document.createElement('option');
+                welcomeOption.value = device;
+                welcomeOption.textContent = device;
+                welcomeDeviceSelect.appendChild(welcomeOption);
+            }
         });
 
         // Set default values
@@ -333,6 +776,10 @@ async function loadConfig() {
             historyTurnsValue.textContent = historyTurnsInput.value;
             systemPromptInput.value = config.system_prompt || '';
             enableThinkingInput.checked = config.enable_thinking !== false;
+            if (welcomeMaxPromptLenInput && welcomeMaxPromptLenValue) {
+                welcomeMaxPromptLenInput.value = config.max_prompt_len || maxPromptLenInput.value;
+                welcomeMaxPromptLenValue.textContent = welcomeMaxPromptLenInput.value;
+            }
         }
 
         await loadLocalModels();
@@ -348,18 +795,57 @@ async function loadLocalModels() {
         localModels = data.models || [];
 
         localModelSelect.innerHTML = `<option value="" data-i18n="opt_select_model">${t('opt_select_model')}</option>`;
+        if (welcomeLocalModelSelect) {
+            welcomeLocalModelSelect.innerHTML = `<option value="">${t('opt_select_model')}</option>`;
+        }
         localModels.forEach(model => {
             const option = document.createElement('option');
             option.value = model.path;
             option.textContent = model.name;
             localModelSelect.appendChild(option);
+            if (welcomeLocalModelSelect) {
+                const welcomeOption = document.createElement('option');
+                welcomeOption.value = model.path;
+                welcomeOption.textContent = model.name;
+                welcomeLocalModelSelect.appendChild(welcomeOption);
+            }
         });
 
-        if (modelSource.value === 'local' && localModelSelect.value) {
+        renderModelSwitcherList();
+        updateModelSwitcherLabel();
+
+        if (localModelSelect && localModelSelect.value) {
             await updateSupportedSettingsForPath(localModelSelect.value);
         }
+        if (welcomeLocalModelSelect && welcomeLocalModelSelect.value) {
+            await updateSupportedSettingsForPath(welcomeLocalModelSelect.value);
+        }
+        updateReloadRequirement();
     } catch (error) {
         console.error('Failed to load local models:', error);
+    }
+}
+
+async function restoreModelStatus() {
+    try {
+        const response = await fetch(`${API_BASE}/api/models/status`);
+        if (!response.ok) return;
+        const data = await response.json();
+        if (!data || !data.loaded) return;
+
+        const lastConfig = loadLastModelConfig();
+        const path = data.path || (lastConfig ? lastConfig.path : '');
+        const device = data.device || (lastConfig ? lastConfig.device : 'AUTO');
+        const maxPromptLen = lastConfig && lastConfig.max_prompt_len
+            ? parseInt(lastConfig.max_prompt_len, 10)
+            : (maxPromptLenInput ? parseInt(maxPromptLenInput.value) : 16384);
+
+        applyLoadedModel(path, device, maxPromptLen);
+        if (path) {
+            await updateSupportedSettingsForPath(path);
+        }
+    } catch (error) {
+        console.warn('Failed to restore model status:', error);
     }
 }
 
@@ -383,8 +869,13 @@ function renderSessions() {
     sessionsList.innerHTML = '';
     sessions.forEach(session => {
         const item = document.createElement('div');
-        item.className = `session-item${session.id === currentSessionId ? ' active' : ''}`;
-        const title = session.title || t('default_chat_name');
+        let className = 'session-item';
+        if (session.id === currentSessionId) className += ' active';
+        if (session.is_temporary) className += ' temporary';
+        item.className = className;
+        const title = session.is_temporary
+            ? (session.title || t('temp_chat_name', 'Temp Chat'))
+            : (session.title || t('default_chat_name'));
         item.innerHTML = `
             <span class="session-title">${escapeHtml(title)}</span>
             <div class="session-actions">
@@ -513,9 +1004,11 @@ function appendMessage(role, content, scroll = true, index = null) {
     `;
 
     const contentDiv = messageDiv.querySelector('.message-content');
-    contentDiv.innerHTML = formatContent(content, role);
     if (role === 'assistant') {
+        contentDiv.innerHTML = formatAssistantContent(content);
         renderMermaid(contentDiv);
+    } else {
+        contentDiv.innerHTML = formatContent(content, role);
     }
 
     const actionsDiv = messageDiv.querySelector('.message-actions');
@@ -581,9 +1074,11 @@ function updateMessageContent(index, content) {
     if (!messageDiv) return;
     const role = messageDiv.classList.contains('user') ? 'user' : 'assistant';
     const contentDiv = messageDiv.querySelector('.message-content');
-    contentDiv.innerHTML = formatContent(content, role);
     if (role === 'assistant') {
+        contentDiv.innerHTML = formatAssistantContent(content);
         renderMermaid(contentDiv);
+    } else {
+        contentDiv.innerHTML = formatContent(content, role);
     }
 }
 
@@ -687,6 +1182,10 @@ async function handleRetryMessage(index) {
 
 async function regenerateAssistant() {
     if (isGenerating || !currentSessionId) return;
+    if (modelReloadRequired) {
+        showToast(t('status_reload_required', 'Reload required'));
+        return;
+    }
 
     // Create assistant placeholder
     const assistantIndex = currentMessages.length;
@@ -699,6 +1198,7 @@ async function regenerateAssistant() {
     stopBtn.classList.remove('hidden');
 
     const contentDiv = messagesDiv.querySelector(`.message[data-index="${assistantIndex}"] .message-content`);
+    setAssistantPlaceholder(contentDiv);
     let fullResponse = '';
 
     try {
@@ -732,7 +1232,7 @@ async function regenerateAssistant() {
                             fullResponse += data.token;
                             incrementGenTokens();
                             if (contentDiv) {
-                                contentDiv.innerHTML = formatContent(fullResponse, 'assistant');
+                                contentDiv.innerHTML = formatAssistantContent(fullResponse);
                                 renderMermaid(contentDiv);
                             }
                             currentMessages[assistantIndex].content = fullResponse;
@@ -747,13 +1247,16 @@ async function regenerateAssistant() {
                                 statsDiv.className = 'message-stats';
                                 statsDiv.innerHTML = `
                                     <span class="stat-item"><strong>${data.stats.tokens}</strong> tokens</span>
-                                    <span class="stat-separator">路</span>
+                                    <span class="stat-separator"> · </span>
                                     <span class="stat-item"><strong>${data.stats.speed}</strong> t/s</span>
-                                    <span class="stat-separator">路</span>
+                                    <span class="stat-separator"> · </span>
                                     <span class="stat-item"><strong>${data.stats.time}</strong>s</span>
                                 `;
                                 contentDiv.appendChild(statsDiv);
                                 updateGenStats(data.stats);
+                            }
+                            if (contentDiv) {
+                                renderMermaid(contentDiv);
                             }
                         }
                     } catch (e) {
@@ -852,6 +1355,41 @@ function renderMermaid(container) {
     }
 }
 
+const MATH_RENDER_OPTIONS = {
+    delimiters: [
+        { left: '$$', right: '$$', display: true },
+        { left: '$', right: '$', display: false },
+        { left: '\\(', right: '\\)', display: false },
+        { left: '\\[', right: '\\]', display: true }
+    ],
+    throwOnError: false,
+    ignoredTags: ['script', 'noscript', 'style', 'textarea', 'pre', 'code'],
+    ignoredClasses: ['mermaid']
+};
+const MATH_DELIM_RE = /(\$\$|\\\[|\\\(|\$)/;
+
+function renderMath(container) {
+    if (!container || typeof renderMathInElement === 'undefined') return;
+    try {
+        renderMathInElement(container, MATH_RENDER_OPTIONS);
+    } catch (error) {
+        console.warn('Math render failed:', error);
+    }
+}
+
+function renderMathHtml(html) {
+    if (!html || typeof renderMathInElement === 'undefined') return html;
+    if (!MATH_DELIM_RE.test(html)) return html;
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = html;
+    try {
+        renderMathInElement(wrapper, MATH_RENDER_OPTIONS);
+    } catch (error) {
+        console.warn('Math render failed:', error);
+    }
+    return wrapper.innerHTML;
+}
+
 function extractThink(content) {
     const openRegex = /<\s*think\s*>/i;
     const closeRegex = /<\s*\/\s*think\s*>/i;
@@ -898,6 +1436,21 @@ function formatContent(content, role = 'assistant') {
     return html || '';
 }
 
+function formatAssistantContent(content) {
+    return renderMathHtml(formatContent(content, 'assistant'));
+}
+
+function setAssistantPlaceholder(contentDiv) {
+    if (!contentDiv) return;
+    const label = escapeHtml(t('msg_thinking', 'Thinking...'));
+    contentDiv.innerHTML = `
+        <div class="assistant-placeholder">
+            <span class="assistant-placeholder-text">${label}</span>
+            <span class="typing-dots"><span></span><span></span><span></span></span>
+        </div>
+    `;
+}
+
 function escapeHtml(text) {
     const div = document.createElement('div');
     div.textContent = text;
@@ -927,6 +1480,34 @@ async function createNewChat() {
         await fetch(`${API_BASE}/api/sessions/${data.id}/select`, { method: 'POST' });
     } catch (error) {
         console.error('Failed to create chat:', error);
+    }
+}
+
+// Toggle sidebar visibility
+function toggleSidebar() {
+    sidebar.classList.toggle('collapsed');
+}
+
+// Create temporary chat (not saved to history)
+async function createTempChat() {
+    try {
+        const response = await fetch(`${API_BASE}/api/sessions`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_temporary: true })
+        });
+        const data = await response.json();
+        sessions.unshift({ id: data.id, title: data.title, is_temporary: true });
+        currentSessionId = data.id;
+        renderSessions();
+        renderMessages([]);
+        pendingAttachments = [];
+        renderAttachments();
+
+        // Select the new session
+        await fetch(`${API_BASE}/api/sessions/${data.id}/select`, { method: 'POST' });
+    } catch (error) {
+        console.error('Failed to create temp chat:', error);
     }
 }
 
@@ -999,6 +1580,10 @@ async function sendMessage() {
     const text = messageInput.value.trim();
     const hasAttachments = pendingAttachments.length > 0;
     if ((!text && !hasAttachments) || isGenerating || !modelLoaded) return;
+    if (modelReloadRequired) {
+        showToast(t('status_reload_required', 'Reload required'));
+        return;
+    }
 
     // Create session if needed
     if (!currentSessionId) {
@@ -1040,6 +1625,7 @@ async function sendMessage() {
     currentMessages.push({ role: 'assistant', content: '' });
     appendMessage('assistant', '', true, assistantIndex);
     const contentDiv = messagesDiv.querySelector(`.message[data-index="${assistantIndex}"] .message-content`);
+    setAssistantPlaceholder(contentDiv);
 
     let fullResponse = '';
 
@@ -1076,7 +1662,7 @@ async function sendMessage() {
                             fullResponse += data.token;
                             incrementGenTokens();
                             if (contentDiv) {
-                                contentDiv.innerHTML = formatContent(fullResponse, 'assistant');
+                                contentDiv.innerHTML = formatAssistantContent(fullResponse);
                                 renderMermaid(contentDiv);
                             }
                             currentMessages[assistantIndex].content = fullResponse;
@@ -1098,6 +1684,9 @@ async function sendMessage() {
                                 contentDiv.appendChild(statsDiv);
                                 // Update status bar stats
                                 updateGenStats(data.stats);
+                            }
+                            if (contentDiv) {
+                                renderMermaid(contentDiv);
                             }
                             // Update session title if it's new
                             await loadSessions();
@@ -1148,44 +1737,30 @@ function getGenerationConfig() {
     return config;
 }
 
-async function loadModel() {
-    const source = modelSource.value;
-    let modelPath = '';
-    let modelId = '';
-
-    if (source === 'local') {
-        modelPath = localModelSelect.value;
-        if (!modelPath) {
-            showToast(t('opt_select_model'));
-            return;
-        }
-        await updateSupportedSettingsForPath(modelPath);
-    } else {
-        modelId = presetModelSelect.value;
-        if (!modelId) {
-            showToast(t('opt_select_model'));
-            return;
-        }
-        // For preset models, we need to download first
-        await downloadModel(modelId);
+async function loadModelFromWelcome() {
+    const modelPath = welcomeLocalModelSelect ? welcomeLocalModelSelect.value : '';
+    if (!modelPath) {
+        showToast(t('opt_select_model'));
         return;
     }
+    await updateSupportedSettingsForPath(modelPath);
 
-    const device = deviceSelect.value;
-    const maxPromptLen = parseInt(maxPromptLenInput.value);
+    const device = welcomeDeviceSelect ? welcomeDeviceSelect.value : (deviceSelect ? deviceSelect.value : 'AUTO');
+    const maxPromptLen = welcomeMaxPromptLenInput
+        ? parseInt(welcomeMaxPromptLenInput.value)
+        : parseInt(maxPromptLenInput.value);
 
-    loadModelConfirmBtn.disabled = true;
-    loadModelConfirmBtn.textContent = t('status_loading_model', '...');
+    setWelcomeLoading(true);
     statusDot.className = 'status-dot loading';
-    modelStatus.textContent = t('status_loading_model', '...');
+    modelStatus.textContent = t('status_loading_model', device);
 
     try {
         const response = await fetch(`${API_BASE}/api/models/load`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                source: source,
-                model_id: modelId,
+                source: 'local',
+                model_id: '',
                 path: modelPath,
                 device: device,
                 max_prompt_len: maxPromptLen
@@ -1199,11 +1774,55 @@ async function loadModel() {
 
         const data = await response.json();
 
-        modelLoaded = true;
-        statusDot.className = 'status-dot ready';
-        modelStatus.textContent = t('status_loaded', data.device);
-        messageInput.disabled = false;
-        sendBtn.disabled = false;
+        applyLoadedModel(modelPath, data.device, maxPromptLen);
+
+        showToast(t('dialog_loaded_msg', data.device));
+    } catch (error) {
+        statusDot.className = 'status-dot';
+        modelStatus.textContent = t('dialog_error');
+        showToast(error.message);
+    } finally {
+        setWelcomeLoading(false);
+    }
+}
+
+async function loadModel() {
+    const modelPath = localModelSelect ? localModelSelect.value : '';
+    if (!modelPath) {
+        showToast(t('opt_select_model'));
+        return;
+    }
+    await updateSupportedSettingsForPath(modelPath);
+
+    const device = deviceSelect ? deviceSelect.value : 'AUTO';
+    const maxPromptLen = parseInt(maxPromptLenInput.value);
+
+    loadModelConfirmBtn.disabled = true;
+    loadModelConfirmBtn.textContent = t('status_loading_model', '...');
+    statusDot.className = 'status-dot loading';
+    modelStatus.textContent = t('status_loading_model', '...');
+
+    try {
+        const response = await fetch(`${API_BASE}/api/models/load`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                source: 'local',
+                model_id: '',
+                path: modelPath,
+                device: device,
+                max_prompt_len: maxPromptLen
+            })
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to load model');
+        }
+
+        const data = await response.json();
+
+        applyLoadedModel(modelPath, data.device, maxPromptLen);
 
         showToast(t('dialog_loaded_msg', data.device));
         closeSettingsModal();
@@ -1217,79 +1836,149 @@ async function loadModel() {
     }
 }
 
-async function downloadModel(repoId) {
-    downloadProgress.classList.remove('hidden');
-    loadModelConfirmBtn.disabled = true;
-    progressFill.style.width = '0%';
-    downloadStatus.textContent = t('dl_init_process');
+function setDownloadRunning(running) {
+    downloadRunning = running;
+    if (downloadProgress) {
+        downloadProgress.classList.toggle('hidden', !running);
+    }
+    if (downloadModelBtn) downloadModelBtn.disabled = running;
+    if (downloadModelInput) downloadModelInput.disabled = running;
+    if (cancelDownloadBtn) cancelDownloadBtn.disabled = !running;
+    if (!running && progressFill) {
+        progressFill.classList.remove('indeterminate');
+        progressFill.style.width = '0%';
+    }
+}
+
+function setDownloadIndeterminate(indeterminate) {
+    if (!progressFill) return;
+    progressFill.classList.toggle('indeterminate', indeterminate);
+    if (indeterminate) {
+        progressFill.style.width = '40%';
+    }
+}
+
+async function startDownload() {
+    if (downloadRunning) return;
+    const repoId = downloadModelInput ? downloadModelInput.value.trim() : '';
+    if (!repoId) {
+        showToast(t('placeholder_repo'));
+        return;
+    }
+
+    setDownloadRunning(true);
+    setDownloadIndeterminate(true);
+    if (downloadStatus) {
+        downloadStatus.textContent = t('dl_init_process');
+    }
+
+    const abortController = new AbortController();
+    downloadAbortController = abortController;
+    let finishedPath = '';
 
     try {
         const response = await fetch(`${API_BASE}/api/download/stream`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ repo_id: repoId })
+            body: JSON.stringify({ repo_id: repoId }),
+            signal: abortController.signal
         });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Download failed');
+        }
+
+        if (!response.body) {
+            throw new Error('Download stream not available');
+        }
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
 
-        while (true) {
-            const { value, done } = await reader.read();
-            if (done) break;
+        let done = false;
+        while (!done) {
+            const { value, done: streamDone } = await reader.read();
+            if (streamDone) break;
 
             const chunk = decoder.decode(value);
             const lines = chunk.split('\n');
 
             for (const line of lines) {
-                if (line.startsWith('data: ')) {
-                    try {
-                        const data = JSON.parse(line.slice(6));
-
-                        if (data.type === 'progress') {
-                            const percent = data.percent || 0;
+                if (!line.startsWith('data: ')) continue;
+                try {
+                    const data = JSON.parse(line.slice(6));
+                    if (data.type === 'progress') {
+                        const percent = Math.max(0, Math.min(100, data.percent || 0));
+                        setDownloadIndeterminate(false);
+                        if (progressFill) {
                             progressFill.style.width = `${percent}%`;
-                            downloadStatus.textContent = data.message || t('status_downloading', `${percent.toFixed(1)}%`);
-                        } else if (data.type === 'done') {
-                            downloadProgress.classList.add('hidden');
-                            // Refresh local models and load
-                            await loadLocalModels();
-                            // Find and select the downloaded model
-                            const modelOption = Array.from(localModelSelect.options).find(opt =>
-                                opt.value.includes(repoId.split('/').pop())
-                            );
-                            if (modelOption) {
-                                localModelSelect.value = modelOption.value;
-                                modelSource.value = 'local';
-                                localModelGroup.classList.remove('hidden');
-                                presetModelGroup.classList.add('hidden');
-                                await updateSupportedSettingsForPath(localModelSelect.value);
-                                await loadModel();
-                            }
-                        } else if (data.type === 'error') {
-                            throw new Error(data.message || 'Download failed');
                         }
-                    } catch (e) {
-                        if (e.message !== 'Download failed') {
-                            // Ignore parse errors
-                        } else {
-                            throw e;
+                        if (downloadStatus) {
+                            const name = data.file || repoId;
+                            downloadStatus.textContent = `${t('status_downloading', name)} ${percent}%`;
                         }
+                    } else if (data.type === 'log') {
+                        if (downloadStatus && data.message) {
+                            downloadStatus.textContent = data.message;
+                        }
+                    } else if (data.type === 'finished') {
+                        finishedPath = data.path || '';
+                    } else if (data.type === 'error') {
+                        throw new Error(data.message || 'Download failed');
+                    } else if (data.type === 'done') {
+                        done = true;
+                        break;
+                    }
+                } catch (e) {
+                    if (e.message !== 'Download failed') {
+                        // Ignore parse errors
+                    } else {
+                        throw e;
                     }
                 }
             }
         }
+
+        if (downloadStatus) {
+            downloadStatus.textContent = t('status_ready');
+        }
+        if (progressFill) {
+            progressFill.classList.remove('indeterminate');
+            progressFill.style.width = '100%';
+        }
+        await loadLocalModels();
+        const label = finishedPath
+            ? finishedPath.split(/[/\\\\]/).pop()
+            : repoId.split('/').pop();
+        if (label) {
+            showToast(t('dialog_model_ready', label));
+        }
     } catch (error) {
-        downloadStatus.textContent = `${t('dialog_error')}: ${error.message}`;
+        if (error && error.name === 'AbortError') {
+            return;
+        }
+        if (downloadStatus) {
+            downloadStatus.textContent = `${t('dialog_error')}: ${error.message}`;
+        }
+        showToast(error.message || t('dialog_error'));
     } finally {
-        loadModelConfirmBtn.disabled = false;
+        downloadAbortController = null;
+        setDownloadRunning(false);
     }
 }
 
 async function cancelDownload() {
     try {
         await fetch(`${API_BASE}/api/download/stop`, { method: 'POST' });
-        downloadProgress.classList.add('hidden');
-        loadModelConfirmBtn.disabled = false;
+        if (downloadAbortController) {
+            downloadAbortController.abort();
+            downloadAbortController = null;
+        }
+        if (downloadStatus) {
+            downloadStatus.textContent = t('dl_cancelled');
+        }
+        setDownloadRunning(false);
         showToast(t('dl_cancelled'));
     } catch (error) {
         console.error('Failed to cancel download:', error);
@@ -1302,6 +1991,19 @@ function openSettingsModal() {
 
 function closeSettingsModal() {
     settingsModal.classList.add('hidden');
+}
+
+function openDownloadModal() {
+    if (!downloadModal) return;
+    downloadModal.classList.remove('hidden');
+    if (downloadModelInput) {
+        downloadModelInput.focus();
+    }
+}
+
+function closeDownloadModal() {
+    if (!downloadModal) return;
+    downloadModal.classList.add('hidden');
 }
 
 function autoResize(textarea) {
@@ -1327,6 +2029,19 @@ function setupEventListeners() {
     // New chat
     newChatBtn.addEventListener('click', createNewChat);
 
+    // Temporary chat
+    if (tempChatBtn) {
+        tempChatBtn.addEventListener('click', createTempChat);
+    }
+
+    // Sidebar collapse
+    if (sidebarCollapseBtn) {
+        sidebarCollapseBtn.addEventListener('click', (event) => {
+            event.preventDefault();
+            toggleSidebar();
+        });
+    }
+
     // Send message
     sendBtn.addEventListener('click', sendMessage);
     stopBtn.addEventListener('click', stopGeneration);
@@ -1345,11 +2060,37 @@ function setupEventListeners() {
 
     // Settings modal
     openSettingsBtn.addEventListener('click', openSettingsModal);
-    loadModelBtn.addEventListener('click', openSettingsModal);
     closeSettingsBtn.addEventListener('click', closeSettingsModal);
     settingsModal.addEventListener('click', (e) => {
         if (e.target === settingsModal) closeSettingsModal();
     });
+
+    // Download modal
+    if (openDownloadBtn) {
+        openDownloadBtn.addEventListener('click', openDownloadModal);
+    }
+    if (welcomeDownloadBtn) {
+        welcomeDownloadBtn.addEventListener('click', openDownloadModal);
+    }
+    if (closeDownloadBtn) {
+        closeDownloadBtn.addEventListener('click', closeDownloadModal);
+    }
+    if (downloadModal) {
+        downloadModal.addEventListener('click', (e) => {
+            if (e.target === downloadModal) closeDownloadModal();
+        });
+    }
+    if (downloadModelBtn) {
+        downloadModelBtn.addEventListener('click', startDownload);
+    }
+    if (downloadModelInput) {
+        downloadModelInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                startDownload();
+            }
+        });
+    }
 
     // Rename modal
     closeRenameBtn.addEventListener('click', closeRenameModal);
@@ -1366,24 +2107,41 @@ function setupEventListeners() {
     // Load model
     loadModelConfirmBtn.addEventListener('click', loadModel);
     refreshModelsBtn.addEventListener('click', loadLocalModels);
-    cancelDownloadBtn.addEventListener('click', cancelDownload);
-
-    // Model source switch
-    modelSource.addEventListener('change', () => {
-        if (modelSource.value === 'local') {
-            localModelGroup.classList.remove('hidden');
-            presetModelGroup.classList.add('hidden');
-            updateSupportedSettingsForPath(localModelSelect.value);
-        } else {
-            localModelGroup.classList.add('hidden');
-            presetModelGroup.classList.remove('hidden');
-            applySupportedSettings(null);
-        }
-    });
+    if (cancelDownloadBtn) {
+        cancelDownloadBtn.addEventListener('click', cancelDownload);
+    }
 
     localModelSelect.addEventListener('change', () => {
-        if (modelSource.value === 'local') {
-            updateSupportedSettingsForPath(localModelSelect.value);
+        updateSupportedSettingsForPath(localModelSelect.value);
+        updateReloadRequirement();
+    });
+
+    if (deviceSelect) {
+        deviceSelect.addEventListener('change', updateReloadRequirement);
+    }
+
+    if (modelSwitcherBtn) {
+        modelSwitcherBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            renderModelSwitcherList();
+            toggleModelSwitcher();
+        });
+    }
+    if (modelSwitcherManage) {
+        modelSwitcherManage.addEventListener('click', () => {
+            closeModelSwitcher();
+            openSettingsModal();
+        });
+    }
+    document.addEventListener('click', (e) => {
+        if (!modelSwitcher || !modelSwitcherMenu) return;
+        if (!modelSwitcher.contains(e.target)) {
+            closeModelSwitcher();
+        }
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeModelSwitcher();
         }
     });
 
@@ -1426,6 +2184,7 @@ function setupSettingsListeners() {
 
     maxPromptLenInput.addEventListener('input', () => {
         maxPromptLenValue.textContent = maxPromptLenInput.value;
+        updateReloadRequirement();
     });
 }
 
@@ -1480,11 +2239,130 @@ function updateGenStats(stats) {
     genTimeSpan.textContent = stats.time;
 }
 
+// ============== Floating Panels ==============
+
+const PERF_PANEL_VISIBLE_KEY = 'perf_panel_visible';
+const PERF_PANEL_POS_KEY = 'perf_panel_pos';
+const NPU_PANEL_POS_KEY = 'npu_panel_pos';
+
+function clamp(value, min, max) {
+    return Math.min(Math.max(value, min), max);
+}
+
+function loadPanelPosition(key) {
+    try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        if (!data || !Number.isFinite(data.left) || !Number.isFinite(data.top)) return null;
+        return data;
+    } catch (error) {
+        return null;
+    }
+}
+
+function savePanelPosition(key, left, top) {
+    localStorage.setItem(key, JSON.stringify({ left, top }));
+}
+
+function applyPanelPosition(panel, key) {
+    if (!panel) return;
+    const pos = loadPanelPosition(key);
+    if (!pos) return;
+    const parent = panel.offsetParent || panel.parentElement;
+    if (!parent) return;
+    const panelWidth = panel.offsetWidth;
+    const panelHeight = panel.offsetHeight;
+    if (panelWidth === 0 || panelHeight === 0) return;
+    const parentRect = parent.getBoundingClientRect();
+    const maxLeft = Math.max(0, parentRect.width - panelWidth);
+    const maxTop = Math.max(0, parentRect.height - panelHeight);
+    const left = clamp(pos.left, 0, maxLeft);
+    const top = clamp(pos.top, 0, maxTop);
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+}
+
+function initDraggablePanel(panel, handle, key) {
+    if (!panel || !handle) return;
+    const parent = panel.offsetParent || panel.parentElement || document.body;
+
+    const refreshPosition = () => applyPanelPosition(panel, key);
+    requestAnimationFrame(refreshPosition);
+    window.addEventListener('resize', refreshPosition);
+
+    handle.addEventListener('pointerdown', (event) => {
+        if (event.button !== 0) return;
+        if (event.target.closest('button, a, input, select, textarea')) return;
+
+        const panelRect = panel.getBoundingClientRect();
+        const parentRect = parent.getBoundingClientRect();
+        const startX = event.clientX;
+        const startY = event.clientY;
+        const startLeft = panelRect.left - parentRect.left;
+        const startTop = panelRect.top - parentRect.top;
+
+        const onMove = (moveEvent) => {
+            const panelWidth = panel.offsetWidth;
+            const panelHeight = panel.offsetHeight;
+            const maxLeft = Math.max(0, parentRect.width - panelWidth);
+            const maxTop = Math.max(0, parentRect.height - panelHeight);
+            const left = clamp(startLeft + (moveEvent.clientX - startX), 0, maxLeft);
+            const top = clamp(startTop + (moveEvent.clientY - startY), 0, maxTop);
+            panel.style.left = `${left}px`;
+            panel.style.top = `${top}px`;
+            panel.style.right = 'auto';
+            panel.style.bottom = 'auto';
+            savePanelPosition(key, left, top);
+        };
+
+        const onUp = () => {
+            window.removeEventListener('pointermove', onMove);
+            window.removeEventListener('pointerup', onUp);
+        };
+
+        window.addEventListener('pointermove', onMove);
+        window.addEventListener('pointerup', onUp, { once: true });
+    });
+}
+
+function setPerformancePanelVisible(visible) {
+    if (!performancePanel) return;
+    performancePanel.classList.toggle('hidden', !visible);
+    if (performancePanelToggleBtn) {
+        performancePanelToggleBtn.classList.toggle('active', visible);
+    }
+    localStorage.setItem(PERF_PANEL_VISIBLE_KEY, visible ? '1' : '0');
+    if (visible) {
+        requestAnimationFrame(() => applyPanelPosition(performancePanel, PERF_PANEL_POS_KEY));
+    }
+}
+
+function initPerformancePanel() {
+    if (!performancePanel) return;
+    const stored = localStorage.getItem(PERF_PANEL_VISIBLE_KEY);
+    const visible = stored !== '0';
+    setPerformancePanelVisible(visible);
+    initDraggablePanel(performancePanel, performancePanelHandle, PERF_PANEL_POS_KEY);
+    if (performancePanelToggleBtn) {
+        performancePanelToggleBtn.addEventListener('click', () => {
+            const next = performancePanel.classList.contains('hidden');
+            setPerformancePanelVisible(next);
+        });
+    }
+    if (performancePanelCloseBtn) {
+        performancePanelCloseBtn.addEventListener('click', () => setPerformancePanelVisible(false));
+    }
+}
+
 // ============== NPU Monitor ==============
 
 const npuMonitorBtn = document.getElementById('npuMonitorBtn');
 const npuMonitorPanel = document.getElementById('npuMonitorPanel');
 const closeNpuMonitorBtn = document.getElementById('closeNpuMonitorBtn');
+const npuMonitorHeader = document.getElementById('npuMonitorHeader');
 const npuUtilText = document.getElementById('npuUtilText');
 const npuCurrentValue = document.getElementById('npuCurrentValue');
 const npuChart = document.getElementById('npuChart');
@@ -1503,11 +2381,15 @@ function initNpuMonitor() {
     if (npuChart) {
         npuChartCtx = npuChart.getContext('2d');
     }
+
+    initDraggablePanel(npuMonitorPanel, npuMonitorHeader, NPU_PANEL_POS_KEY);
+    startNpuMonitor();
 }
 
 async function toggleNpuMonitor() {
     if (npuMonitorPanel.classList.contains('hidden')) {
         npuMonitorPanel.classList.remove('hidden');
+        requestAnimationFrame(() => applyPanelPosition(npuMonitorPanel, NPU_PANEL_POS_KEY));
         await startNpuMonitor();
     } else {
         npuMonitorPanel.classList.add('hidden');
@@ -1520,10 +2402,13 @@ async function startNpuMonitor() {
     try {
         const response = await fetch(`${API_BASE}/api/npu/start`, { method: 'POST' });
         const data = await response.json();
+        const searching = !!data.searching;
 
-        if (data.available) {
+        if (data.available || searching) {
             npuMonitorActive = true;
-            npuStatus.textContent = t('npu_monitor_active') || 'Monitoring active';
+            npuStatus.textContent = searching
+                ? (t('npu_monitor_searching') || 'Searching...')
+                : (t('npu_monitor_active') || 'Monitoring active');
             npuPollInterval = setInterval(pollNpuStatus, 1000);
             pollNpuStatus();
         } else {
@@ -1540,6 +2425,22 @@ async function pollNpuStatus() {
         const response = await fetch(`${API_BASE}/api/npu/status`);
         const data = await response.json();
 
+        if (data.searching && !data.available) {
+            npuStatus.textContent = t('npu_monitor_searching') || 'Searching...';
+            npuUtilText.textContent = '--';
+            npuCurrentValue.textContent = '--';
+            return;
+        }
+
+        if (!data.available) {
+            npuStatus.textContent = t('npu_monitor_unavailable') || 'NPU monitoring not available on this system';
+            npuUtilText.textContent = 'N/A';
+            npuCurrentValue.textContent = 'N/A';
+            stopNpuMonitor();
+            return;
+        }
+
+        npuStatus.textContent = t('npu_monitor_active') || 'Monitoring active';
         const current = Math.round(data.current);
         npuUtilText.textContent = `${current}%`;
         npuCurrentValue.textContent = current;

@@ -9,3 +9,5 @@ IdleNPUWaker.spec
 runtime.log
 crash.log
 sessions.json
+.ov_cache/
+.claude/

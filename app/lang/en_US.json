@@ -14,6 +14,19 @@
     "status_cleaning": "Cleaning...",
     "status_loading_model": "Loading: {0}",
     "status_loaded": "Loaded ({0})",
+    "status_reload_required": "Reload required",
+    "status_model_memory": "Model Mem",
+    "status_memory_private": "Private",
+    "status_memory_system": "System",
+    "status_download": "Download",
+    "status_download_idle": "Idle",
+    "status_download_running": "Running",
+    "load_stage_start": "Preparing...",
+    "load_stage_tokenizer": "Initializing tokenizer...",
+    "load_stage_pipeline": "Compiling model...",
+    "load_stage_fallback": "Falling back to CPU...",
+    "load_stage_ready": "Model ready",
+    "load_stage_error": "Load failed",
     "status_no_model": "No model loaded",
 
     "group_run": "Runtime Settings",
@@ -21,9 +34,14 @@
     "label_model": "Local Model",
     "label_model_source": "Model Source",
     "label_preset_model": "Preset Model",
+    "label_download_model": "Model ID",
     "label_language": "Language:",
     "btn_load_model": "Load Model",
-    "conf_max_prompt_len": "Max Prompt Length (NPU)",
+    "btn_reload_model": "Reload Model",
+    "model_switcher_select": "Select model",
+    "model_switcher_empty": "No local models",
+    "btn_open_download": "Download Models",
+    "conf_max_prompt_len": "Max Context Length",
 
     "opt_local_models": "Local Models",
     "opt_preset_models": "Preset Models",
@@ -47,6 +65,7 @@
     "think_duration_pattern": "({0:.1f}s)",
 
     "tip_load_model_first": "Please load a model first",
+    "tip_start_chatting": "Start chatting to begin",
 
     "menu_delete_chat": "Delete Chat",
 
@@ -116,5 +135,12 @@
     "npu_monitor_title": "NPU Monitor",
     "npu_utilization": "Utilization",
     "npu_monitor_active": "Monitoring active",
-    "npu_monitor_unavailable": "NPU monitoring not available on this system"
+    "npu_monitor_searching": "Searching...",
+    "npu_monitor_unavailable": "NPU monitoring not available on this system",
+
+    "btn_temp_chat": "Temp Chat",
+    "temp_chat_name": "Temporary Chat",
+    "temp_chat_tooltip": "Temporary chats are not saved to history",
+    "btn_collapse_sidebar": "Collapse sidebar",
+    "btn_expand_sidebar": "Expand sidebar"
 }

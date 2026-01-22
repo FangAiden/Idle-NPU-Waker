@@ -1,9 +1,11 @@
 import multiprocessing
 import queue
 import threading
+import time
 from typing import Dict, Optional, Tuple
 
 from app.core.llm_process import llm_process_entry
+from backend.system_status import get_process_memory
 
 
 class LLMService:
@@ -19,6 +21,10 @@ class LLMService:
         self._lock = threading.Lock()
         self._load_event = threading.Event()
         self._load_result: Optional[Dict[str, object]] = None
+        self._loading = False
+        self._load_stage = ""
+        self._load_message = ""
+        self._load_started_at: Optional[float] = None
 
         self._active_generation = False
         self._generation_queue: Optional[queue.Queue] = None
@@ -54,7 +60,17 @@ class LLMService:
                 with self._lock:
                     self._device = msg.get("dev")
                     self._load_result = {"ok": True, "dev": self._device or "AUTO"}
+                    self._loading = False
+                    self._load_stage = "ready"
+                    self._load_message = ""
                     self._load_event.set()
+                continue
+
+            if msg_type == "load_stage":
+                with self._lock:
+                    self._loading = True
+                    self._load_stage = msg.get("stage", "") or ""
+                    self._load_message = msg.get("message", "") or ""
                 continue
 
             if msg_type == "token":
@@ -76,6 +92,9 @@ class LLMService:
                 else:
                     with self._lock:
                         self._load_result = {"ok": False, "error": msg.get("msg", "Unknown error")}
+                        self._loading = False
+                        self._load_stage = "error"
+                        self._load_message = msg.get("msg", "Unknown error")
                         self._load_event.set()
 
     def load_model(
@@ -89,6 +108,10 @@ class LLMService:
             self._load_event.clear()
             self._load_result = None
             self._model_path = model_dir
+            self._loading = True
+            self._load_stage = "starting"
+            self._load_message = "Starting"
+            self._load_started_at = time.time()
 
             self._cmd_queue.put(
                 {"type": "load", "args": (source, model_id, model_dir, device, max_prompt_len)}
@@ -105,6 +128,30 @@ class LLMService:
 
         self._model_loaded = True
         return (self._model_path or "", self._device or "AUTO")
+
+    def get_status(self) -> Dict[str, object]:
+        with self._lock:
+            process_alive = self._process is not None and self._process.is_alive()
+            loaded = bool(self._model_loaded and process_alive)
+            pid = self._process.pid if process_alive and self._process else None
+            path = self._model_path or ""
+            device = self._device or "AUTO"
+            loading = self._loading
+            load_stage = self._load_stage
+            load_message = self._load_message
+            load_started_at = self._load_started_at
+        memory = get_process_memory(pid) if loaded else {"rss": 0, "private": 0}
+        return {
+            "loaded": loaded,
+            "path": path,
+            "device": device,
+            "pid": pid or 0,
+            "memory": memory,
+            "loading": loading,
+            "load_stage": load_stage,
+            "load_message": load_message,
+            "load_started_at": load_started_at or 0,
+        }
 
     def generate(self, messages, config):
         with self._lock:

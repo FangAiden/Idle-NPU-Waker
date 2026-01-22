@@ -2,6 +2,7 @@
 NPU Monitor Service - Attempts to read Intel NPU utilization via Windows Performance Counters
 """
 import csv
+import os
 import subprocess
 import threading
 import time
@@ -28,13 +29,39 @@ class NPUMonitor:
         self._current_utilization: float = 0.0
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        self._search_thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
         self._npu_counter_path: Optional[str] = None
         self._counter_reader: Optional[str] = None
         self._available = False
+        self._searching = False
+        self._stop_search = False
         self._wmi_name_pattern: Optional[str] = None
         self._wmi_luid_checked = False
         self._wmi_luid_pattern: Optional[str] = None
+        self._fast_timeout = self._parse_int_env("IDLE_NPU_MONITOR_FAST_TIMEOUT", 2)
+        self._deep_scan = self._parse_bool_env("IDLE_NPU_MONITOR_DEEP_SCAN", True)
+        self._retry_interval = self._parse_int_env("IDLE_NPU_MONITOR_RETRY_INTERVAL", 10)
+
+    def _parse_bool_env(self, name: str, default: bool) -> bool:
+        raw = os.environ.get(name)
+        if raw is None:
+            return default
+        value = raw.strip().lower()
+        if value in ("1", "true", "yes", "on"):
+            return True
+        if value in ("0", "false", "no", "off"):
+            return False
+        return default
+
+    def _parse_int_env(self, name: str, default: int) -> int:
+        raw = os.environ.get(name)
+        if not raw:
+            return default
+        try:
+            return int(raw)
+        except ValueError:
+            return default
 
     def _run_powershell(self, command: str, timeout: int = 10) -> subprocess.CompletedProcess:
         return subprocess.run(
@@ -54,8 +81,8 @@ class NPUMonitor:
             creationflags=subprocess.CREATE_NO_WINDOW
         )
 
-    def _read_typeperf_counter(self, path: str) -> Optional[float]:
-        result = self._run_cmd(f'typeperf "{path}" -sc 1', timeout=6)
+    def _read_typeperf_counter(self, path: str, timeout: int = 6) -> Optional[float]:
+        result = self._run_cmd(f'typeperf "{path}" -sc 1', timeout=timeout)
         if result.returncode != 0:
             return None
         if "Error:" in result.stdout or "Error:" in result.stderr:
@@ -78,12 +105,12 @@ class NPUMonitor:
         value = sum(values) / len(values)
         return min(100.0, max(0.0, value))
 
-    def _read_powershell_counter(self, path: str) -> Optional[float]:
+    def _read_powershell_counter(self, path: str, timeout: int = 6) -> Optional[float]:
         cmd = (
             f"$s=(Get-Counter -Counter '{path}' -ErrorAction SilentlyContinue).CounterSamples;"
             "if ($s) { ($s | Measure-Object -Property CookedValue -Average).Average }"
         )
-        result = self._run_powershell(cmd, timeout=6)
+        result = self._run_powershell(cmd, timeout=timeout)
         if result.returncode != 0:
             return None
         value = result.stdout.strip()
@@ -94,7 +121,9 @@ class NPUMonitor:
         except ValueError:
             return None
 
-    def _read_wmi_gpu_engine_utilization(self, name_pattern: Optional[str] = None) -> Optional[float]:
+    def _read_wmi_gpu_engine_utilization(
+        self, name_pattern: Optional[str] = None, timeout: int = 6
+    ) -> Optional[float]:
         pattern = name_pattern or WMI_NPU_NAME_PATTERN
         cmd = (
             "$items = Get-CimInstance -ClassName Win32_PerfFormattedData_GPUPerformanceCounters_GPUEngine "
@@ -111,7 +140,7 @@ class NPUMonitor:
             "  if ($groups) { ($groups | Measure-Object -Maximum).Maximum } "
             "}"
         )
-        result = self._run_powershell(cmd, timeout=6)
+        result = self._run_powershell(cmd, timeout=timeout)
         if result.returncode != 0:
             return None
         value = result.stdout.strip()
@@ -122,11 +151,11 @@ class NPUMonitor:
         except ValueError:
             return None
 
-    def _test_typeperf_counter(self, path: str) -> bool:
-        return self._read_typeperf_counter(path) is not None
+    def _test_typeperf_counter(self, path: str, timeout: int = 6) -> bool:
+        return self._read_typeperf_counter(path, timeout=timeout) is not None
 
-    def _test_powershell_counter(self, path: str) -> bool:
-        return self._read_powershell_counter(path) is not None
+    def _test_powershell_counter(self, path: str, timeout: int = 6) -> bool:
+        return self._read_powershell_counter(path, timeout=timeout) is not None
 
     def _format_luid_pattern(self, luid_value) -> Optional[str]:
         if not luid_value:
@@ -169,14 +198,50 @@ class NPUMonitor:
 
     def _find_npu_counter(self) -> Optional[str]:
         """Try to find NPU performance counter path"""
+        env_path = os.environ.get("IDLE_NPU_COUNTER_PATH")
+        if env_path:
+            path = env_path.strip()
+            if path.lower().startswith("wmi_gpu"):
+                self._counter_reader = "wmi_gpu"
+                pattern = None
+                if ":" in path:
+                    pattern = path.split(":", 1)[1].strip() or None
+                self._wmi_name_pattern = pattern or WMI_NPU_NAME_PATTERN
+                return path
+            self._counter_reader = "typeperf"
+            return path
+
+        fast_timeout = max(1, self._fast_timeout)
         for path in NPU_COUNTER_CANDIDATES:
-            if self._test_typeperf_counter(path):
+            if self._stop_search:
+                return None
+            if self._test_typeperf_counter(path, timeout=fast_timeout):
                 self._counter_reader = "typeperf"
                 return path
         for path in NPU_COUNTER_CANDIDATES:
-            if self._test_powershell_counter(path):
+            if self._stop_search:
+                return None
+            if self._test_powershell_counter(path, timeout=fast_timeout):
                 self._counter_reader = "powershell"
                 return path
+
+        if self._stop_search:
+            return None
+
+        luid_pattern = self._get_wmi_luid_pattern()
+        if luid_pattern:
+            if self._read_wmi_gpu_engine_utilization(luid_pattern, timeout=fast_timeout) is not None:
+                self._counter_reader = "wmi_gpu"
+                self._wmi_name_pattern = luid_pattern
+                return f"wmi_gpu:{luid_pattern}"
+
+        if self._read_wmi_gpu_engine_utilization(WMI_NPU_NAME_PATTERN, timeout=fast_timeout) is not None:
+            self._counter_reader = "wmi_gpu"
+            self._wmi_name_pattern = WMI_NPU_NAME_PATTERN
+            return "wmi_gpu"
+
+        if not self._deep_scan:
+            return None
 
         try:
             # Try to list all counters containing NPU or Neural
@@ -233,18 +298,6 @@ class NPUMonitor:
         except Exception:
             pass
 
-        luid_pattern = self._get_wmi_luid_pattern()
-        if luid_pattern:
-            if self._read_wmi_gpu_engine_utilization(luid_pattern) is not None:
-                self._counter_reader = "wmi_gpu"
-                self._wmi_name_pattern = luid_pattern
-                return f"wmi_gpu:{luid_pattern}"
-
-        if self._read_wmi_gpu_engine_utilization(WMI_NPU_NAME_PATTERN) is not None:
-            self._counter_reader = "wmi_gpu"
-            self._wmi_name_pattern = WMI_NPU_NAME_PATTERN
-            return "wmi_gpu"
-
         return None
 
     def _normalize_typeperf_path(self, line: str) -> str:
@@ -273,6 +326,29 @@ class NPUMonitor:
 
         return 0.0
 
+    def _search_loop(self):
+        while not self._stop_search:
+            counter_path = self._find_npu_counter()
+            with self._lock:
+                if self._stop_search:
+                    self._searching = False
+                    return
+                self._npu_counter_path = counter_path
+                self._available = counter_path is not None
+
+            if counter_path:
+                print(f"[NPU Monitor] Found counter: {self._npu_counter_path}")
+                self._running = True
+                self._searching = False
+                self._thread = threading.Thread(target=self._monitor_loop, daemon=True)
+                self._thread.start()
+                return
+
+            print("[NPU Monitor] No NPU performance counter found, retrying...")
+            time.sleep(max(1, self._retry_interval))
+
+        self._searching = False
+
     def _monitor_loop(self):
         """Background monitoring loop"""
         while self._running:
@@ -289,28 +365,30 @@ class NPUMonitor:
         """Start NPU monitoring"""
         if self._running:
             return self._available
+        if self._searching:
+            return self._available
 
-        # Try to find NPU counter
+        self._stop_search = False
         self._counter_reader = None
-        self._npu_counter_path = self._find_npu_counter()
-        self._available = self._npu_counter_path is not None
-
-        if self._available:
-            print(f"[NPU Monitor] Found counter: {self._npu_counter_path}")
-            self._running = True
-            self._thread = threading.Thread(target=self._monitor_loop, daemon=True)
-            self._thread.start()
-        else:
-            print("[NPU Monitor] No NPU performance counter found")
+        self._npu_counter_path = None
+        self._available = False
+        self._searching = True
+        self._search_thread = threading.Thread(target=self._search_loop, daemon=True)
+        self._search_thread.start()
 
         return self._available
 
     def stop(self):
         """Stop monitoring"""
         self._running = False
+        self._stop_search = True
         if self._thread:
             self._thread.join(timeout=2)
             self._thread = None
+        if self._search_thread:
+            self._search_thread.join(timeout=2)
+            self._search_thread = None
+        self._searching = False
 
     def get_current(self) -> float:
         """Get current utilization"""
@@ -325,6 +403,10 @@ class NPUMonitor:
     def is_available(self) -> bool:
         """Check if NPU monitoring is available"""
         return self._available
+
+    def is_searching(self) -> bool:
+        """Check if NPU monitor is still searching for counters"""
+        return self._searching
 
 
 # Singleton instance

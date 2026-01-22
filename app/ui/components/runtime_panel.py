@@ -27,16 +27,6 @@ class RuntimeControlPanel(QGroupBox):
         layout = QVBoxLayout(self)
         layout.setSpacing(10)
 
-        self.lbl_lang = QLabel()
-        self.lbl_lang.setStyleSheet(STYLE_LABEL_NORMAL)
-        layout.addWidget(self.lbl_lang)
-        self.combo_lang = NoScrollComboBox()
-        self.combo_lang.addItem("English", "en_US")
-        self.combo_lang.addItem("简体中文", "zh_CN")
-        self.combo_lang.setStyleSheet(STYLE_COMBOBOX)
-        self.combo_lang.currentIndexChanged.connect(self._on_lang_switch)
-        layout.addWidget(self.combo_lang)
-
         self.lbl_device = QLabel()
         self.lbl_device.setStyleSheet(STYLE_LABEL_NORMAL)
         layout.addWidget(self.lbl_device)
@@ -92,20 +82,8 @@ class RuntimeControlPanel(QGroupBox):
     def on_load_finished(self, success):
         self.btn_load.setEnabled(True)
 
-    def _on_lang_switch(self):
-        code = self.combo_lang.currentData()
-        if code != i18n.current_lang:
-            i18n.load_language(code)
-
     def update_texts(self):
         self.setTitle(i18n.t("group_run"))
-        self.lbl_lang.setText(i18n.t("label_language"))
         self.lbl_device.setText(i18n.t("label_device"))
         self.lbl_model.setText(i18n.t("label_model"))
         self.btn_load.setText(i18n.t("btn_load_model"))
-        
-        idx = self.combo_lang.findData(i18n.current_lang)
-        if idx >= 0:
-            self.combo_lang.blockSignals(True)
-            self.combo_lang.setCurrentIndex(idx)
-            self.combo_lang.blockSignals(False)

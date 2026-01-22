@@ -37,6 +37,7 @@ from app.utils.scanner import scan_dirs
 from backend.download_service import DownloadService
 from backend.llm_service import LLMService
 from backend.npu_monitor import get_npu_monitor
+from backend.system_status import get_memory_status
 
 
 FRONTEND_DIR = ROOT_DIR / "frontend"
@@ -64,6 +65,7 @@ npu_monitor = get_npu_monitor()
 
 class SessionCreateRequest(BaseModel):
     title: Optional[str] = None
+    is_temporary: Optional[bool] = False
 
 
 class SessionRenameRequest(BaseModel):
@@ -242,13 +244,25 @@ def api_models_load(req: ModelLoadRequest):
     return {"path": model_path, "device": device}
 
 
+@app.get("/api/models/status")
+def api_models_status():
+    return llm_service.get_status()
+
+
 @app.get("/api/sessions")
 def api_sessions():
     with session_lock:
         sessions = [
-            {"id": sid, "title": data.get("title", "")}
+            {"id": sid, "title": data.get("title", ""), "is_temporary": data.get("is_temporary", False)}
             for sid, data in session_mgr.sessions.items()
         ]
+        # Include temporary sessions
+        for sid, data in session_mgr.temp_sessions.items():
+            sessions.append({
+                "id": sid,
+                "title": data.get("title", ""),
+                "is_temporary": True
+            })
         return {
             "sessions": sessions,
             "current_session_id": session_mgr.current_session_id,
@@ -258,15 +272,16 @@ def api_sessions():
 @app.post("/api/sessions")
 def api_sessions_create(req: SessionCreateRequest):
     title = req.title or DEFAULT_SESSION_TITLE
+    is_temporary = req.is_temporary or False
     with session_lock:
-        sid = session_mgr.create_session(title)
-        return {"id": sid, "title": title}
+        sid = session_mgr.create_session(title, is_temporary=is_temporary)
+        return {"id": sid, "title": title, "is_temporary": is_temporary}
 
 
 @app.post("/api/sessions/{sid}/select")
 def api_sessions_select(sid: str):
     with session_lock:
-        if sid not in session_mgr.sessions:
+        if sid not in session_mgr.sessions and sid not in session_mgr.temp_sessions:
             raise HTTPException(status_code=404, detail="Session not found")
         session_mgr.current_session_id = sid
         session_mgr._save_sessions()
@@ -276,7 +291,7 @@ def api_sessions_select(sid: str):
 @app.put("/api/sessions/{sid}")
 def api_sessions_rename(sid: str, req: SessionRenameRequest):
     with session_lock:
-        if sid not in session_mgr.sessions:
+        if sid not in session_mgr.sessions and sid not in session_mgr.temp_sessions:
             raise HTTPException(status_code=404, detail="Session not found")
         session_mgr.rename_session(sid, req.title)
     return {"ok": True}
@@ -285,7 +300,7 @@ def api_sessions_rename(sid: str, req: SessionRenameRequest):
 @app.delete("/api/sessions/{sid}")
 def api_sessions_delete(sid: str):
     with session_lock:
-        if sid not in session_mgr.sessions:
+        if sid not in session_mgr.sessions and sid not in session_mgr.temp_sessions:
             raise HTTPException(status_code=404, detail="Session not found")
         session_mgr.delete_session(sid)
         return {"ok": True, "current_session_id": session_mgr.current_session_id}
@@ -505,16 +520,26 @@ def api_download_stop():
     return {"ok": True}
 
 
+@app.get("/api/status")
+def api_status():
+    return {
+        "memory": get_memory_status(),
+        "download": download_service.get_status(),
+        "model": llm_service.get_status(),
+    }
+
+
 @app.post("/api/npu/start")
 def api_npu_start():
     available = npu_monitor.start()
-    return {"available": available}
+    return {"available": available, "searching": npu_monitor.is_searching()}
 
 
 @app.get("/api/npu/status")
 def api_npu_status():
     return {
         "available": npu_monitor.is_available(),
+        "searching": npu_monitor.is_searching(),
         "current": npu_monitor.get_current(),
         "history": npu_monitor.get_history()
     }
