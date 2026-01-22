@@ -838,6 +838,42 @@ body {
     padding: 20px;
 }
 
+.scroll-bottom-btn {
+    position: absolute;
+    right: 24px;
+    bottom: 96px;
+    width: 40px;
+    height: 40px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-tertiary);
+    color: var(--text-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(8px);
+    transition: opacity 0.2s ease, transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease;
+    z-index: 130;
+}
+
+.scroll-bottom-btn.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+}
+
+.scroll-bottom-btn:hover {
+    background-color: var(--bg-hover);
+    border-color: var(--accent-color);
+}
+
+.scroll-bottom-btn svg {
+    width: 18px;
+    height: 18px;
+}
+
 .welcome-screen {
     display: flex;
     flex-direction: column;
@@ -1619,6 +1655,11 @@ body {
         top: 64px;
         width: auto;
         max-width: none;
+    }
+
+    .scroll-bottom-btn {
+        right: 16px;
+        bottom: 88px;
     }
 
     .chat-container {

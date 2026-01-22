@@ -24,6 +24,8 @@ let loadedModelConfig = { path: '', device: 'AUTO', maxPromptLen: 16384 };
 let modelReloadRequired = false;
 const LAST_MODEL_KEY = 'last_model_config';
 let systemStatusInterval = null;
+let autoScrollEnabled = true;
+const SCROLL_BOTTOM_THRESHOLD = 80;
 
 // i18n State
 let currentLang = localStorage.getItem('lang') || 'en_US';
@@ -43,6 +45,7 @@ const tempChatBtn = document.getElementById('tempChatBtn');
 const chatContainer = document.getElementById('chatContainer');
 const welcomeScreen = document.getElementById('welcomeScreen');
 const messagesDiv = document.getElementById('messages');
+const scrollBottomBtn = document.getElementById('scrollBottomBtn');
 const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
 const stopBtn = document.getElementById('stopBtn');
@@ -947,8 +950,9 @@ function renderMessages(messages) {
         messages.forEach((msg, index) => {
             appendMessage(msg.role, msg.content, false, index);
         });
-        scrollToBottom();
+        scrollToBottom(true);
     }
+    updateScrollState();
 }
 
 function normalizeMessageContent(content) {
@@ -1330,11 +1334,90 @@ function setupMarkdown() {
 
 function renderMarkdown(text) {
     if (!text) return '';
+    text = normalizeStrongLineBreaks(text);
     if (typeof marked !== 'undefined') {
         setupMarkdown();
-        return marked.parse(text);
+        const html = marked.parse(text);
+        return applyFallbackStrong(html);
     }
     return escapeHtml(text).replace(/\n/g, '<br>');
+}
+
+function applyFallbackStrong(html) {
+    if (!html || html.indexOf('**') === -1 || typeof document === 'undefined') return html;
+    const container = document.createElement('div');
+    container.innerHTML = html;
+
+    const shouldSkipNode = (node) => {
+        let el = node.parentElement;
+        while (el) {
+            const tag = el.tagName ? el.tagName.toLowerCase() : '';
+            if (tag === 'code' || tag === 'pre' || tag === 'script' || tag === 'style') return true;
+            if (el.classList && el.classList.contains('mermaid')) return true;
+            el = el.parentElement;
+        }
+        return false;
+    };
+
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+        acceptNode(node) {
+            if (!node.nodeValue || node.nodeValue.indexOf('**') === -1) return NodeFilter.FILTER_REJECT;
+            if (shouldSkipNode(node)) return NodeFilter.FILTER_REJECT;
+            return NodeFilter.FILTER_ACCEPT;
+        }
+    });
+
+    const nodes = [];
+    while (walker.nextNode()) {
+        nodes.push(walker.currentNode);
+    }
+
+    nodes.forEach((node) => {
+        const text = node.nodeValue;
+        if (!text || text.indexOf('**') === -1) return;
+        const frag = document.createDocumentFragment();
+        let cursor = 0;
+        while (true) {
+            const start = text.indexOf('**', cursor);
+            if (start === -1) {
+                frag.appendChild(document.createTextNode(text.slice(cursor)));
+                break;
+            }
+            const end = text.indexOf('**', start + 2);
+            if (end === -1) {
+                frag.appendChild(document.createTextNode(text.slice(cursor)));
+                break;
+            }
+            if (start > cursor) {
+                frag.appendChild(document.createTextNode(text.slice(cursor, start)));
+            }
+            const inner = text.slice(start + 2, end);
+            const strongEl = document.createElement('strong');
+            strongEl.textContent = inner;
+            frag.appendChild(strongEl);
+            cursor = end + 2;
+        }
+        node.parentNode.replaceChild(frag, node);
+    });
+
+    return container.innerHTML;
+}
+
+function normalizeStrongLineBreaks(text) {
+    if (!text || text.indexOf('**') === -1) return text;
+    const fenceParts = text.split(/(```[\s\S]*?```)/g);
+    return fenceParts.map((part, idx) => {
+        if (idx % 2) return part;
+        const inlineParts = part.split(/(`[^`]*`)/g);
+        return inlineParts.map((chunk, cidx) => {
+            if (cidx % 2) return chunk;
+            return chunk.replace(/\*\*([\s\S]*?)\*\*/g, (match, inner) => {
+                if (!/[\r\n\u2028\u2029]/.test(inner)) return match;
+                const flattened = inner.replace(/[\r\n\u2028\u2029]+/g, ' ');
+                return `**${flattened}**`;
+            });
+        }).join('');
+    }).join('');
 }
 
 function setupMermaid() {
@@ -1457,8 +1540,31 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function scrollToBottom() {
+function isNearBottom() {
+    if (!chatContainer) return true;
+    const distance = chatContainer.scrollHeight - chatContainer.scrollTop - chatContainer.clientHeight;
+    return distance <= SCROLL_BOTTOM_THRESHOLD;
+}
+
+function updateScrollState() {
+    if (!chatContainer) return;
+    const atBottom = isNearBottom();
+    autoScrollEnabled = atBottom;
+    if (scrollBottomBtn) {
+        scrollBottomBtn.classList.toggle('visible', !atBottom);
+    }
+}
+
+function scrollToBottom(force = false) {
+    if (!chatContainer) return;
+    if (!force && !autoScrollEnabled) return;
     chatContainer.scrollTop = chatContainer.scrollHeight;
+    if (force) {
+        autoScrollEnabled = true;
+    }
+    if (scrollBottomBtn) {
+        scrollBottomBtn.classList.remove('visible');
+    }
 }
 
 async function createNewChat() {
@@ -2057,6 +2163,14 @@ function setupEventListeners() {
     });
 
     messageInput.addEventListener('input', () => autoResize(messageInput));
+
+    if (chatContainer) {
+        chatContainer.addEventListener('scroll', updateScrollState, { passive: true });
+    }
+    if (scrollBottomBtn) {
+        scrollBottomBtn.addEventListener('click', () => scrollToBottom(true));
+    }
+    updateScrollState();
 
     // Settings modal
     openSettingsBtn.addEventListener('click', openSettingsModal);
