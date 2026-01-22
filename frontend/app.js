@@ -1011,6 +1011,7 @@ function appendMessage(role, content, scroll = true, index = null) {
     if (role === 'assistant') {
         contentDiv.innerHTML = formatAssistantContent(content);
         renderMermaid(contentDiv);
+        renderMath(contentDiv);
     } else {
         contentDiv.innerHTML = formatContent(content, role);
     }
@@ -1081,6 +1082,7 @@ function updateMessageContent(index, content) {
     if (role === 'assistant') {
         contentDiv.innerHTML = formatAssistantContent(content);
         renderMermaid(contentDiv);
+        renderMath(contentDiv);
     } else {
         contentDiv.innerHTML = formatContent(content, role);
     }
@@ -1238,6 +1240,7 @@ async function regenerateAssistant() {
                             if (contentDiv) {
                                 contentDiv.innerHTML = formatAssistantContent(fullResponse);
                                 renderMermaid(contentDiv);
+                                renderMath(contentDiv);
                             }
                             currentMessages[assistantIndex].content = fullResponse;
                             scrollToBottom();
@@ -1261,6 +1264,7 @@ async function regenerateAssistant() {
                             }
                             if (contentDiv) {
                                 renderMermaid(contentDiv);
+                                renderMath(contentDiv);
                             }
                         }
                     } catch (e) {
@@ -1335,12 +1339,53 @@ function setupMarkdown() {
 function renderMarkdown(text) {
     if (!text) return '';
     text = normalizeStrongLineBreaks(text);
+    const extracted = extractMathBlocks(text);
+    const processed = extracted.text;
     if (typeof marked !== 'undefined') {
         setupMarkdown();
-        const html = marked.parse(text);
-        return applyFallbackStrong(html);
+        const html = marked.parse(processed);
+        const withStrong = applyFallbackStrong(html);
+        return restoreMathBlocks(withStrong, extracted.blocks);
     }
-    return escapeHtml(text).replace(/\n/g, '<br>');
+    const escaped = escapeHtml(processed).replace(/\n/g, '<br>');
+    return restoreMathBlocks(escaped, extracted.blocks);
+}
+
+function extractMathBlocks(text) {
+    if (!text || (text.indexOf('$$') === -1 && text.indexOf('\\[') === -1)) {
+        return { text, blocks: [] };
+    }
+    const blocks = [];
+    const blockPattern = /\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]/g;
+
+    const replaceBlocks = (chunk) => chunk.replace(blockPattern, (match) => {
+        const id = blocks.length;
+        blocks.push(match);
+        return `@@MATHBLOCK_${id}@@`;
+    });
+
+    const fenceParts = text.split(/(```[\s\S]*?```)/g);
+    const processed = fenceParts.map((part, idx) => {
+        if (idx % 2) return part;
+        const inlineParts = part.split(/(`[^`]*`)/g);
+        return inlineParts.map((chunk, cidx) => {
+            if (cidx % 2) return chunk;
+            return replaceBlocks(chunk);
+        }).join('');
+    }).join('');
+
+    return { text: processed, blocks };
+}
+
+function restoreMathBlocks(html, blocks) {
+    if (!blocks || blocks.length === 0) return html;
+    return html.replace(/@@MATHBLOCK_(\d+)@@/g, (match, id) => {
+        const idx = Number(id);
+        const raw = blocks[idx];
+        if (!raw) return match;
+        const safe = escapeHtml(raw.trim());
+        return `<div class="math-block">${safe}</div>`;
+    });
 }
 
 function applyFallbackStrong(html) {
@@ -1520,7 +1565,7 @@ function formatContent(content, role = 'assistant') {
 }
 
 function formatAssistantContent(content) {
-    return renderMathHtml(formatContent(content, 'assistant'));
+    return formatContent(content, 'assistant');
 }
 
 function setAssistantPlaceholder(contentDiv) {
@@ -1770,6 +1815,7 @@ async function sendMessage() {
                             if (contentDiv) {
                                 contentDiv.innerHTML = formatAssistantContent(fullResponse);
                                 renderMermaid(contentDiv);
+                                renderMath(contentDiv);
                             }
                             currentMessages[assistantIndex].content = fullResponse;
                             scrollToBottom();
@@ -1793,6 +1839,7 @@ async function sendMessage() {
                             }
                             if (contentDiv) {
                                 renderMermaid(contentDiv);
+                                renderMath(contentDiv);
                             }
                             // Update session title if it's new
                             await loadSessions();
