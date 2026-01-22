@@ -20,6 +20,7 @@ NPU_COUNTER_CANDIDATES = [
     r"\AI Processor(*)\Utilization Percentage",
 ]
 WMI_NPU_NAME_PATTERN = "NPU|Neural|AI"
+GPU_ENGINE_ENGTYPE_FALLBACKS = ("Compute", "NPU", "*")
 
 
 class NPUMonitor:
@@ -82,27 +83,40 @@ class NPUMonitor:
         )
 
     def _read_typeperf_counter(self, path: str, timeout: int = 6) -> Optional[float]:
-        result = self._run_cmd(f'typeperf "{path}" -sc 1', timeout=timeout)
+        result = self._run_powershell(f'typeperf "{path}" -sc 1', timeout=timeout)
+        if result.returncode != 0:
+            result = self._run_cmd(f'typeperf "{path}" -sc 1', timeout=timeout)
         if result.returncode != 0:
             return None
-        if "Error:" in result.stdout or "Error:" in result.stderr:
+        error_markers = ("Error:", "错误", "No valid counters")
+        stdout = result.stdout or ""
+        stderr = result.stderr or ""
+        if any(marker in stdout for marker in error_markers) or any(marker in stderr for marker in error_markers):
             return None
-        lines = [line for line in result.stdout.splitlines() if line.strip()]
+        lines = [line for line in stdout.splitlines() if line.strip()]
         if len(lines) < 2:
             return None
-        try:
-            row = next(csv.reader([lines[-1]]))
-        except Exception:
-            return None
         values = []
-        for item in row[1:]:
+        for line in reversed(lines):
             try:
-                values.append(float(item))
-            except ValueError:
+                row = next(csv.reader([line]))
+            except Exception:
                 continue
+            values = []
+            for item in row[1:]:
+                try:
+                    values.append(float(item))
+                except ValueError:
+                    continue
+            if values:
+                break
         if not values:
             return None
-        value = sum(values) / len(values)
+        lower_path = path.lower()
+        if "\\gpu engine" in lower_path:
+            value = max(values)
+        else:
+            value = sum(values) / len(values)
         return min(100.0, max(0.0, value))
 
     def _read_powershell_counter(self, path: str, timeout: int = 6) -> Optional[float]:
@@ -196,6 +210,16 @@ class NPUMonitor:
             self._wmi_luid_pattern = None
         return self._wmi_luid_pattern
 
+    def _build_gpu_engine_luid_paths(self, luid_pattern: str) -> List[str]:
+        if not luid_pattern:
+            return []
+        paths: List[str] = []
+        for eng_type in GPU_ENGINE_ENGTYPE_FALLBACKS:
+            paths.append(
+                rf"\GPU Engine(pid_*_{luid_pattern}_phys_*_eng_*_engtype_{eng_type})\Utilization Percentage"
+            )
+        return paths
+
     def _find_npu_counter(self) -> Optional[str]:
         """Try to find NPU performance counter path"""
         env_path = os.environ.get("IDLE_NPU_COUNTER_PATH")
@@ -229,6 +253,21 @@ class NPUMonitor:
             return None
 
         luid_pattern = self._get_wmi_luid_pattern()
+        if luid_pattern:
+            gpu_engine_paths = self._build_gpu_engine_luid_paths(luid_pattern)
+            for path in gpu_engine_paths:
+                if self._stop_search:
+                    return None
+                if self._test_typeperf_counter(path, timeout=fast_timeout):
+                    self._counter_reader = "typeperf"
+                    return path
+            for path in gpu_engine_paths:
+                if self._stop_search:
+                    return None
+                if self._test_powershell_counter(path, timeout=fast_timeout):
+                    self._counter_reader = "powershell"
+                    return path
+
         if luid_pattern:
             if self._read_wmi_gpu_engine_utilization(luid_pattern, timeout=fast_timeout) is not None:
                 self._counter_reader = "wmi_gpu"
