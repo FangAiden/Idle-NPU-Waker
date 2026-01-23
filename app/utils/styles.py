@@ -351,6 +351,22 @@ pre {{
     font-family: Consolas, monospace;
 }}
 code {{ color: #ececec; }}
+.code-block {{
+    margin: 8px 0;
+}}
+.code-tools {{
+    text-align: right;
+    margin-top: 4px;
+}}
+.code-copy {{
+    display: inline-block;
+    color: #b4b4b4;
+    border: 1px solid #444;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 11px;
+    text-decoration: none;
+}}
 h1, h2, h3 {{ color: {COLOR_ACCENT}; font-weight: 600; margin-top: 10px; }}
 strong {{ color: #ffffff; }}
 p {{ margin-bottom: 8px; }}

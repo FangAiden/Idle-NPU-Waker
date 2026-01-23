@@ -21,6 +21,12 @@ try:
 except ImportError:
     HAS_MARKDOWN = False
 
+try:
+    import pygments  # noqa: F401
+    HAS_PYGMENTS = True
+except ImportError:
+    HAS_PYGMENTS = False
+
 class MessageBubble(QWidget):
     sig_edit_requested = pyqtSignal(int)
     sig_retry_requested = pyqtSignal(int)
@@ -31,6 +37,8 @@ class MessageBubble(QWidget):
         self.full_text = text
         self.message_index = message_index
         self.thinking_expanded = True
+        self._code_blocks_main = []
+        self._code_blocks_think = []
         
         self.think_start_time = None
         self.think_duration = think_duration
@@ -79,7 +87,7 @@ class MessageBubble(QWidget):
         self.think_lbl.setWordWrap(True)
         self.think_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.think_lbl.setOpenExternalLinks(True)
-        self.think_lbl.linkActivated.connect(self.open_link)
+        self.think_lbl.linkActivated.connect(lambda url: self.open_link(url, target="think"))
         self.think_lbl.setStyleSheet(STYLE_THINK_LABEL)
         think_layout.addWidget(self.think_lbl)
         self.content_layout.addWidget(self.think_frame)
@@ -88,7 +96,7 @@ class MessageBubble(QWidget):
         self.content_lbl.setWordWrap(True)
         self.content_lbl.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         self.content_lbl.setOpenExternalLinks(True)
-        self.content_lbl.linkActivated.connect(self.open_link)
+        self.content_lbl.linkActivated.connect(lambda url: self.open_link(url, target="main"))
         
         bg_color = COLOR_BUBBLE_USER if self.is_user else COLOR_BUBBLE_AI
         self.content_lbl.setStyleSheet(STYLE_CONTENT_BUBBLE_BASE + f"QLabel {{ background-color: {bg_color}; }}")
@@ -149,8 +157,74 @@ class MessageBubble(QWidget):
         else:
             self.content_container.setFixedWidth(ai_target_width)
 
-    def open_link(self, url):
-        QDesktopServices.openUrl(QUrl(url))
+    def open_link(self, url, target="main"):
+        url_str = url.toString() if isinstance(url, QUrl) else str(url)
+        if url_str.startswith("copy://"):
+            try:
+                idx = int(url_str.rsplit("/", 1)[-1])
+            except ValueError:
+                return
+            if target == "think":
+                blocks = self._code_blocks_think
+            else:
+                blocks = self._code_blocks_main
+            if 0 <= idx < len(blocks):
+                QApplication.clipboard().setText(blocks[idx])
+                toast = Toast(i18n.t("msg_copied", "Copied successfully"), self.window())
+                toast.show_notification()
+            return
+        QDesktopServices.openUrl(QUrl(url_str))
+
+    def _extract_code_blocks(self, text):
+        if not text:
+            return []
+        pattern = re.compile(r"```[^\n]*\n([\s\S]*?)```", re.MULTILINE)
+        return [match.group(1).strip("\n") for match in pattern.finditer(text)]
+
+    def _inject_copy_links(self, html_text, context="main"):
+        copy_label = html.escape(i18n.t("btn_copy", "Copy"))
+        blocks = self._code_blocks_think if context == "think" else self._code_blocks_main
+
+        def wrap_blocks(pattern, source):
+            index = 0
+            def repl(match):
+                nonlocal index
+                block_html = match.group(1)
+                link = f"<a href=\"copy://{context}/{index}\" class=\"code-copy\">{copy_label}</a>"
+                index += 1
+                return f"<div class=\"code-block\">{block_html}<div class=\"code-tools\">{link}</div></div>"
+            return pattern.sub(repl, source)
+
+        if "codehilite" in html_text:
+            pattern = re.compile(r"(<div class=\"codehilite\">[\s\S]*?</div>)", re.MULTILINE)
+            return wrap_blocks(pattern, html_text)
+
+        pattern = re.compile(r"(<pre>[\s\S]*?</pre>)", re.MULTILINE)
+        return wrap_blocks(pattern, html_text)
+
+    def _render_markdown(self, text, context="main"):
+        if not HAS_MARKDOWN:
+            safe_text = html.escape(text).replace("\n", "<br>")
+            return safe_text
+
+        if context == "think":
+            self._code_blocks_think = self._extract_code_blocks(text)
+        else:
+            self._code_blocks_main = self._extract_code_blocks(text)
+
+        extensions = ["fenced_code", "nl2br"]
+        extension_configs = {}
+        if HAS_PYGMENTS:
+            extensions.append("codehilite")
+            extension_configs["codehilite"] = {
+                "guess_lang": False,
+                "noclasses": True,
+                "pygments_style": "monokai"
+            }
+
+        html_content = markdown.markdown(text, extensions=extensions, extension_configs=extension_configs)
+        html_content = self._inject_copy_links(html_content, context=context)
+        return html_content
 
     def update_toggle_icon(self):
         pix = QPixmap()
@@ -271,7 +345,7 @@ class MessageBubble(QWidget):
             self.update_status_text(is_thinking)
 
             if HAS_MARKDOWN:
-                html_content = markdown.markdown(think_content, extensions=['fenced_code', 'nl2br'])
+                html_content = self._render_markdown(think_content, context="think")
                 self.think_lbl.setTextFormat(Qt.TextFormat.RichText)
                 self.think_lbl.setText(MARKDOWN_CSS + html_content)
             else:
@@ -287,7 +361,7 @@ class MessageBubble(QWidget):
             self.content_lbl.setVisible(True)
             
             if HAS_MARKDOWN:
-                html_content = markdown.markdown(main_content, extensions=['fenced_code', 'nl2br'])
+                html_content = self._render_markdown(main_content, context="main")
                 self.content_lbl.setTextFormat(Qt.TextFormat.RichText)
                 self.content_lbl.setText(MARKDOWN_CSS + html_content)
             else:

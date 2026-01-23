@@ -1022,12 +1022,44 @@ body {
     cursor: not-allowed;
 }
 
+.code-block {
+    position: relative;
+    margin: 12px 0;
+}
+
 .message-content pre {
     background-color: var(--bg-secondary);
-    padding: 12px 16px;
+    padding: 12px 16px 36px;
     border-radius: 8px;
     overflow-x: auto;
-    margin: 12px 0;
+    margin: 0;
+}
+
+.message-content pre code.hljs {
+    background: transparent;
+}
+
+.code-copy-btn {
+    position: absolute;
+    right: 10px;
+    bottom: 10px;
+    background-color: rgba(0, 0, 0, 0.4);
+    color: var(--text-primary);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 12px;
+    cursor: pointer;
+    opacity: 0.9;
+    transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.code-block:hover .code-copy-btn {
+    opacity: 1;
+}
+
+.code-copy-btn:active {
+    transform: translateY(1px);
 }
 
 .message-content code {

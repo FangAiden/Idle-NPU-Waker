@@ -16,6 +16,7 @@ let pendingAttachments = [];
 let maxFileBytes = 512 * 1024;
 let markdownReady = false;
 let mermaidReady = false;
+let codeHighlightReady = false;
 let currentMessages = [];
 let editingIndex = null;
 let downloadRunning = false;
@@ -1012,6 +1013,7 @@ function appendMessage(role, content, scroll = true, index = null) {
         contentDiv.innerHTML = formatAssistantContent(content);
         renderMermaid(contentDiv);
         renderMath(contentDiv);
+        renderCodeHighlight(contentDiv);
     } else {
         contentDiv.innerHTML = formatContent(content, role);
     }
@@ -1083,6 +1085,7 @@ function updateMessageContent(index, content) {
         contentDiv.innerHTML = formatAssistantContent(content);
         renderMermaid(contentDiv);
         renderMath(contentDiv);
+        renderCodeHighlight(contentDiv);
     } else {
         contentDiv.innerHTML = formatContent(content, role);
     }
@@ -1100,13 +1103,10 @@ function truncateMessages(keepCount) {
     });
 }
 
-async function handleCopyMessage(index) {
-    const msg = getMessageByIndex(index);
-    if (!msg) return;
-    const text = normalizeMessageContent(msg.content);
+async function copyTextToClipboard(text) {
     try {
         await navigator.clipboard.writeText(text);
-        showToast(t('msg_copied', 'Copied successfully'));
+        return true;
     } catch (error) {
         const temp = document.createElement('textarea');
         temp.value = text;
@@ -1114,12 +1114,30 @@ async function handleCopyMessage(index) {
         temp.select();
         try {
             document.execCommand('copy');
-            showToast(t('msg_copied', 'Copied successfully'));
+            return true;
         } catch (err) {
-            showToast(t('dialog_error', 'Error'));
+            return false;
+        } finally {
+            document.body.removeChild(temp);
         }
-        document.body.removeChild(temp);
     }
+}
+
+async function handleCopyMessage(index) {
+    const msg = getMessageByIndex(index);
+    if (!msg) return;
+    const text = normalizeMessageContent(msg.content);
+    const ok = await copyTextToClipboard(text);
+    showToast(ok ? t('msg_copied', 'Copied successfully') : t('dialog_error', 'Error'));
+}
+
+async function handleCopyCode(btn) {
+    const block = btn.closest('.code-block');
+    const codeEl = block ? block.querySelector('code') : null;
+    if (!codeEl) return;
+    const text = codeEl.textContent || '';
+    const ok = await copyTextToClipboard(text);
+    showToast(ok ? t('msg_copied', 'Copied successfully') : t('dialog_error', 'Error'));
 }
 
 function handleEditMessage(index) {
@@ -1241,6 +1259,7 @@ async function regenerateAssistant() {
                                 contentDiv.innerHTML = formatAssistantContent(fullResponse);
                                 renderMermaid(contentDiv);
                                 renderMath(contentDiv);
+                                renderCodeHighlight(contentDiv);
                             }
                             currentMessages[assistantIndex].content = fullResponse;
                             scrollToBottom();
@@ -1265,6 +1284,7 @@ async function regenerateAssistant() {
                             if (contentDiv) {
                                 renderMermaid(contentDiv);
                                 renderMath(contentDiv);
+                                renderCodeHighlight(contentDiv);
                             }
                         }
                     } catch (e) {
@@ -1307,7 +1327,13 @@ function setupMarkdown() {
             return `<div class="mermaid">${escaped}</div>`;
         }
         const langClass = langLabel ? `language-${langLabel}` : '';
-        return `<pre><code class="${langClass}">${escaped}</code></pre>`;
+        const copyLabel = escapeHtml(t('btn_copy', 'Copy'));
+        return `
+            <div class="code-block">
+                <pre><code class="${langClass}">${escaped}</code></pre>
+                <button class="code-copy-btn" type="button" title="${copyLabel}">${copyLabel}</button>
+            </div>
+        `;
     };
     renderer.link = (href, title, text) => {
         let url = href;
@@ -1463,6 +1489,58 @@ function normalizeStrongLineBreaks(text) {
             });
         }).join('');
     }).join('');
+}
+
+function setupCodeHighlight() {
+    if (codeHighlightReady || typeof hljs === 'undefined') return;
+    codeHighlightReady = true;
+}
+
+function createCodeCopyButton() {
+    const copyLabel = t('btn_copy', 'Copy');
+    const btn = document.createElement('button');
+    btn.className = 'code-copy-btn';
+    btn.type = 'button';
+    btn.title = copyLabel;
+    btn.textContent = copyLabel;
+    return btn;
+}
+
+function decorateCodeBlocks(container) {
+    if (!container) return;
+    const codeNodes = Array.from(container.querySelectorAll('pre code'));
+    codeNodes.forEach((codeEl) => {
+        const pre = codeEl.parentElement;
+        if (!pre) return;
+        const existingWrapper = pre.parentElement;
+        if (existingWrapper && existingWrapper.classList.contains('code-block')) {
+            if (!existingWrapper.querySelector('.code-copy-btn')) {
+                existingWrapper.appendChild(createCodeCopyButton());
+            }
+            return;
+        }
+        const wrapper = document.createElement('div');
+        wrapper.className = 'code-block';
+        pre.parentNode.insertBefore(wrapper, pre);
+        wrapper.appendChild(pre);
+        wrapper.appendChild(createCodeCopyButton());
+    });
+}
+
+function renderCodeHighlight(container) {
+    if (!container) return;
+    decorateCodeBlocks(container);
+    if (typeof hljs === 'undefined') return;
+    setupCodeHighlight();
+    const blocks = container.querySelectorAll('pre code');
+    blocks.forEach((block) => {
+        if (block.classList.contains('hljs')) return;
+        try {
+            hljs.highlightElement(block);
+        } catch (error) {
+            console.warn('Highlight failed:', error);
+        }
+    });
 }
 
 function setupMermaid() {
@@ -1816,6 +1894,7 @@ async function sendMessage() {
                                 contentDiv.innerHTML = formatAssistantContent(fullResponse);
                                 renderMermaid(contentDiv);
                                 renderMath(contentDiv);
+                                renderCodeHighlight(contentDiv);
                             }
                             currentMessages[assistantIndex].content = fullResponse;
                             scrollToBottom();
@@ -1840,6 +1919,7 @@ async function sendMessage() {
                             if (contentDiv) {
                                 renderMermaid(contentDiv);
                                 renderMath(contentDiv);
+                                renderCodeHighlight(contentDiv);
                             }
                             // Update session title if it's new
                             await loadSessions();
@@ -2213,6 +2293,14 @@ function setupEventListeners() {
 
     if (chatContainer) {
         chatContainer.addEventListener('scroll', updateScrollState, { passive: true });
+    }
+    if (messagesDiv) {
+        messagesDiv.addEventListener('click', (e) => {
+            const btn = e.target.closest('.code-copy-btn');
+            if (!btn) return;
+            e.preventDefault();
+            handleCopyCode(btn);
+        });
     }
     if (scrollBottomBtn) {
         scrollBottomBtn.addEventListener('click', () => scrollToBottom(true));
