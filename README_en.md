@@ -9,6 +9,7 @@ It integrates **Intel OpenVINO GenAI** for AI PCs with NPUs (e.g. Intel Core Ult
 
 ![Application Screenshot](assets/screenshot1.png)
 ![Application Screenshot](assets/screenshot2.png)
+![Application Screenshot](assets/screenshot3.png)
 
 ---
 

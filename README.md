@@ -9,6 +9,7 @@
 
 ![应用截图](assets/screenshot1.png)
 ![应用截图](assets/screenshot2.png)
+![应用截图](assets/screenshot3.png)
 
 ---
 

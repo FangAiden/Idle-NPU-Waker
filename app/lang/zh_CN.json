@@ -131,6 +131,6 @@
     "temp_chat_tooltip": "临时对话不会保存历史记录",
     "btn_collapse_sidebar": "收起侧边栏",
     "btn_expand_sidebar": "展开侧边栏",
-    "conf_npu_poll_interval": "NPU 轮询间隔",
+    "conf_npu_poll_interval": "NPU 状态轮询间隔",
     "conf_auto_load_model": "启动时自动加载上次模型"
 }
