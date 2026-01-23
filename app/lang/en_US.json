@@ -41,6 +41,7 @@
     "group_run": "Runtime Settings",
     "label_device": "Device",
     "label_model": "Local Model",
+    "conf_auto_load_model": "Auto-load last model on startup",
     "label_model_source": "Model Source",
     "label_preset_model": "Preset Model",
     "label_download_model": "Model ID",
@@ -51,6 +52,7 @@
     "model_switcher_empty": "No local models",
     "btn_open_download": "Download Models",
     "conf_max_prompt_len": "Max Context Length",
+    "conf_npu_poll_interval": "NPU Poll Interval",
 
     "opt_local_models": "Local Models",
     "opt_preset_models": "Preset Models",

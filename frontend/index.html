@@ -41,7 +41,7 @@
                         </svg>
                         <span id="currentLangLabel">English</span>
                     </button>
-                    <div class="lang-dropdown hidden" id="langDropdown">
+                    <div class="lang-dropdown hidden ui-pop" id="langDropdown">
                         <button class="lang-option" data-lang="en_US">English</button>
                         <button class="lang-option" data-lang="zh_CN">简体中文</button>
                     </div>
@@ -105,7 +105,7 @@
                                 <polyline points="4 6 8 10 12 6"></polyline>
                             </svg>
                         </button>
-                        <div class="model-switcher-menu hidden" id="modelSwitcherMenu">
+                        <div class="model-switcher-menu hidden ui-pop" id="modelSwitcherMenu">
                             <div class="model-switcher-title" data-i18n="label_model">Model</div>
                             <div class="model-switcher-list" id="modelSwitcherList"></div>
                             <button class="model-switcher-manage" id="modelSwitcherManage" type="button" data-i18n="btn_settings">Settings</button>
@@ -114,7 +114,7 @@
                 </div>
             </div>
 
-            <div class="performance-panel" id="performancePanel">
+            <div class="performance-panel ui-panel" id="performancePanel">
                 <div class="perf-row perf-top panel-handle" id="performancePanelHandle">
                     <div class="gen-stats" id="genStats">
                         <span class="gen-stat"><span id="genTokens">0</span> tokens</span>
@@ -140,7 +140,7 @@
             </div>
 
             <!-- NPU Monitor Panel -->
-            <div class="npu-monitor-panel hidden" id="npuMonitorPanel">
+            <div class="npu-monitor-panel hidden ui-panel" id="npuMonitorPanel">
                 <div class="npu-monitor-header panel-handle" id="npuMonitorHeader">
                     <span data-i18n="npu_monitor_title">NPU Monitor</span>
                     <button class="close-btn" id="closeNpuMonitorBtn">&times;</button>
@@ -244,83 +244,94 @@
     </div>
 
     <!-- Settings Modal -->
-    <div class="modal-overlay hidden" id="settingsModal">
+    <div class="modal-overlay hidden ui-modal" id="settingsModal">
         <div class="modal">
             <div class="modal-header">
                 <h2 data-i18n="btn_settings">Settings</h2>
                 <button class="close-btn" id="closeSettingsBtn">&times;</button>
             </div>
-            <div class="modal-content">
+            <div class="modal-content settings-modal-content">
                 <div class="settings-tabs">
                     <button class="tab-btn active" data-tab="model" data-i18n="tab_model">Model</button>
                     <button class="tab-btn" data-tab="generation" data-i18n="grp_generation">Generation</button>
                     <button class="tab-btn" data-tab="context" data-i18n="grp_context">Context</button>
                 </div>
+                <div class="settings-tab-body">
+                    <div class="tab-content active" id="tab-model">
+                        <div class="setting-group checkbox-group">
+                            <label>
+                                <input type="checkbox" id="autoLoadModelToggle">
+                                <span data-i18n="conf_auto_load_model">Auto-load last model on startup</span>
+                            </label>
+                        </div>
+                        <div class="setting-group" id="localModelGroup">
+                            <label data-i18n="label_model">Local Model</label>
+                            <select id="localModelSelect">
+                                <option value="" data-i18n="opt_select_model">-- Select a model --</option>
+                            </select>
+                            <button class="refresh-btn" id="refreshModelsBtn" data-i18n="btn_refresh">Refresh</button>
+                        </div>
+                        <div class="setting-group">
+                            <label data-i18n="label_device">Device</label>
+                            <select id="deviceSelect">
+                                <option value="AUTO">AUTO</option>
+                            </select>
+                        </div>
+                        <div class="setting-group">
+                            <label><span data-i18n="conf_npu_poll_interval">NPU Poll Interval</span>: <span id="npuPollIntervalValue">1000</span> ms</label>
+                            <input type="range" id="npuPollInterval" min="200" max="5000" step="100" value="1000">
+                        </div>
+                        <div class="setting-group">
+                            <label><span data-i18n="conf_max_prompt_len">Max Prompt Length</span>: <span id="maxPromptLenValue">16384</span></label>
+                            <input type="range" id="maxPromptLen" min="1024" max="32768" step="1024" value="16384">
+                        </div>
+                        <button class="primary-btn" id="loadModelConfirmBtn" data-i18n="btn_load_model">Load Model</button>
+                    </div>
 
-                <div class="tab-content active" id="tab-model">
-                    <div class="setting-group" id="localModelGroup">
-                        <label data-i18n="label_model">Local Model</label>
-                        <select id="localModelSelect">
-                            <option value="" data-i18n="opt_select_model">-- Select a model --</option>
-                        </select>
-                        <button class="refresh-btn" id="refreshModelsBtn" data-i18n="btn_refresh">Refresh</button>
+                    <div class="tab-content" id="tab-generation">
+                        <div class="setting-group" data-setting-key="max_new_tokens">
+                            <label><span data-i18n="conf_max_tokens">Max Tokens</span>: <span id="maxTokensValue">1024</span></label>
+                            <input type="range" id="maxTokens" min="128" max="8192" step="128" value="1024">
+                        </div>
+                        <div class="setting-group" data-setting-key="temperature">
+                            <label><span data-i18n="conf_temp">Temperature</span>: <span id="temperatureValue">0.7</span></label>
+                            <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.7">
+                        </div>
+                        <div class="setting-group" data-setting-key="top_p">
+                            <label><span data-i18n="conf_top_p">Top P</span>: <span id="topPValue">0.9</span></label>
+                            <input type="range" id="topP" min="0" max="1" step="0.05" value="0.9">
+                        </div>
+                        <div class="setting-group" data-setting-key="top_k">
+                            <label><span data-i18n="conf_top_k">Top K</span>: <span id="topKValue">40</span></label>
+                            <input type="number" id="topK" min="1" max="100" value="40">
+                        </div>
+                        <div class="setting-group" data-setting-key="repetition_penalty">
+                            <label><span data-i18n="conf_rep_penalty">Repetition Penalty</span>: <span id="repPenaltyValue">1.1</span></label>
+                            <input type="range" id="repPenalty" min="1" max="2" step="0.1" value="1.1">
+                        </div>
+                        <div class="setting-group checkbox-group" data-setting-key="do_sample">
+                            <label>
+                                <input type="checkbox" id="doSample" checked>
+                                <span data-i18n="conf_do_sample">Enable Sampling</span>
+                            </label>
+                        </div>
                     </div>
-                    <div class="setting-group">
-                        <label data-i18n="label_device">Device</label>
-                        <select id="deviceSelect">
-                            <option value="AUTO">AUTO</option>
-                        </select>
-                    </div>
-                    <div class="setting-group">
-                        <label><span data-i18n="conf_max_prompt_len">Max Prompt Length</span>: <span id="maxPromptLenValue">16384</span></label>
-                        <input type="range" id="maxPromptLen" min="1024" max="32768" step="1024" value="16384">
-                    </div>
-                    <button class="primary-btn" id="loadModelConfirmBtn" data-i18n="btn_load_model">Load Model</button>
-                </div>
 
-                <div class="tab-content" id="tab-generation">
-                    <div class="setting-group" data-setting-key="max_new_tokens">
-                        <label><span data-i18n="conf_max_tokens">Max Tokens</span>: <span id="maxTokensValue">1024</span></label>
-                        <input type="range" id="maxTokens" min="128" max="8192" step="128" value="1024">
-                    </div>
-                    <div class="setting-group" data-setting-key="temperature">
-                        <label><span data-i18n="conf_temp">Temperature</span>: <span id="temperatureValue">0.7</span></label>
-                        <input type="range" id="temperature" min="0" max="2" step="0.1" value="0.7">
-                    </div>
-                    <div class="setting-group" data-setting-key="top_p">
-                        <label><span data-i18n="conf_top_p">Top P</span>: <span id="topPValue">0.9</span></label>
-                        <input type="range" id="topP" min="0" max="1" step="0.05" value="0.9">
-                    </div>
-                    <div class="setting-group" data-setting-key="top_k">
-                        <label><span data-i18n="conf_top_k">Top K</span>: <span id="topKValue">40</span></label>
-                        <input type="number" id="topK" min="1" max="100" value="40">
-                    </div>
-                    <div class="setting-group" data-setting-key="repetition_penalty">
-                        <label><span data-i18n="conf_rep_penalty">Repetition Penalty</span>: <span id="repPenaltyValue">1.1</span></label>
-                        <input type="range" id="repPenalty" min="1" max="2" step="0.1" value="1.1">
-                    </div>
-                    <div class="setting-group checkbox-group" data-setting-key="do_sample">
-                        <label>
-                            <input type="checkbox" id="doSample" checked>
-                            <span data-i18n="conf_do_sample">Enable Sampling</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="tab-content" id="tab-context">
-                    <div class="setting-group" data-setting-key="max_history_turns">
-                        <label><span data-i18n="conf_history_turns">Max History Turns</span>: <span id="historyTurnsValue">10</span></label>
-                        <input type="range" id="historyTurns" min="0" max="50" step="1" value="10">
-                    </div>
-                    <div class="setting-group" data-setting-key="system_prompt">
-                        <label data-i18n="conf_sys_prompt">System Prompt</label>
-                        <textarea id="systemPrompt" rows="4">You are a helpful AI assistant.</textarea>
-                    </div>
-                    <div class="setting-group checkbox-group" data-setting-key="enable_thinking">
-                        <label>
-                            <input type="checkbox" id="enableThinking" checked>
-                            <span data-i18n="conf_enable_thinking">Enable Thinking</span>
-                        </label>
+                    <div class="tab-content" id="tab-context">
+                        <div class="setting-group" data-setting-key="max_history_turns">
+                            <label><span data-i18n="conf_history_turns">Max History Turns</span>: <span id="historyTurnsValue">10</span></label>
+                            <input type="range" id="historyTurns" min="0" max="50" step="1" value="10">
+                        </div>
+                        <div class="setting-group" data-setting-key="system_prompt">
+                            <label data-i18n="conf_sys_prompt">System Prompt</label>
+                            <textarea id="systemPrompt" rows="4">You are a helpful AI assistant.</textarea>
+                        </div>
+                        <div class="setting-group checkbox-group" data-setting-key="enable_thinking">
+                            <label>
+                                <input type="checkbox" id="enableThinking" checked>
+                                <span data-i18n="conf_enable_thinking">Enable Thinking</span>
+                            </label>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -328,7 +339,7 @@
     </div>
 
     <!-- Download Modal -->
-    <div class="modal-overlay hidden" id="downloadModal">
+    <div class="modal-overlay hidden ui-modal" id="downloadModal">
         <div class="modal">
             <div class="modal-header">
                 <h2 data-i18n="group_download">Download Model (ModelScope)</h2>
@@ -386,7 +397,7 @@
     </div>
 
     <!-- Rename Modal -->
-    <div class="modal-overlay hidden" id="renameModal">
+    <div class="modal-overlay hidden ui-modal" id="renameModal">
         <div class="modal small-modal">
             <div class="modal-header">
                 <h2 data-i18n="dialog_rename_title">Rename Chat</h2>

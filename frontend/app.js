@@ -26,6 +26,11 @@ let loadedModelConfig = { path: '', device: 'AUTO', maxPromptLen: 16384 };
 let modelReloadRequired = false;
 const LAST_MODEL_KEY = 'last_model_config';
 const USER_CONFIG_KEY = 'user_config';
+const UI_TRANSITION_MS = 180;
+const NPU_POLL_INTERVAL_KEY = 'npu_poll_interval_ms';
+const DEFAULT_NPU_POLL_MS = 1000;
+const AUTO_LOAD_MODEL_KEY = 'auto_load_model';
+const DEFAULT_AUTO_LOAD_MODEL = false;
 let systemStatusInterval = null;
 let autoScrollEnabled = true;
 const SCROLL_BOTTOM_THRESHOLD = 80;
@@ -114,6 +119,9 @@ const refreshModelsBtn = document.getElementById('refreshModelsBtn');
 const loadModelConfirmBtn = document.getElementById('loadModelConfirmBtn');
 const maxPromptLenInput = document.getElementById('maxPromptLen');
 const maxPromptLenValue = document.getElementById('maxPromptLenValue');
+const npuPollIntervalInput = document.getElementById('npuPollInterval');
+const npuPollIntervalValue = document.getElementById('npuPollIntervalValue');
+const autoLoadModelToggle = document.getElementById('autoLoadModelToggle');
 const downloadProgress = document.getElementById('downloadProgress');
 const progressFill = document.getElementById('progressFill');
 const downloadStatus = document.getElementById('downloadStatus');
@@ -208,6 +216,33 @@ function showToast(message, duration = 2000) {
     setTimeout(() => {
         toast.classList.add('hidden');
     }, duration);
+}
+
+function clearUiTimer(el) {
+    if (!el || !el.dataset.uiTimer) return;
+    clearTimeout(Number(el.dataset.uiTimer));
+    delete el.dataset.uiTimer;
+}
+
+function showAnimated(el) {
+    if (!el) return;
+    clearUiTimer(el);
+    el.classList.remove('hidden');
+    requestAnimationFrame(() => {
+        el.classList.add('ui-open');
+    });
+}
+
+function hideAnimated(el) {
+    if (!el) return;
+    clearUiTimer(el);
+    if (el.classList.contains('hidden')) return;
+    el.classList.remove('ui-open');
+    const timer = window.setTimeout(() => {
+        el.classList.add('hidden');
+        clearUiTimer(el);
+    }, UI_TRANSITION_MS);
+    el.dataset.uiTimer = String(timer);
 }
 
 function loadLastModelConfig() {
@@ -403,7 +438,7 @@ function renderModelSwitcherList() {
 
 function closeModelSwitcher() {
     if (modelSwitcherMenu) {
-        modelSwitcherMenu.classList.add('hidden');
+        hideAnimated(modelSwitcherMenu);
     }
     if (modelSwitcherBtn) {
         modelSwitcherBtn.setAttribute('aria-expanded', 'false');
@@ -412,12 +447,12 @@ function closeModelSwitcher() {
 
 function toggleModelSwitcher() {
     if (!modelSwitcherMenu || !modelSwitcherBtn) return;
-    const isHidden = modelSwitcherMenu.classList.contains('hidden');
-    if (isHidden) {
-        modelSwitcherMenu.classList.remove('hidden');
-        modelSwitcherBtn.setAttribute('aria-expanded', 'true');
-    } else {
+    const isOpen = modelSwitcherMenu.classList.contains('ui-open');
+    if (isOpen) {
         closeModelSwitcher();
+    } else {
+        showAnimated(modelSwitcherMenu);
+        modelSwitcherBtn.setAttribute('aria-expanded', 'true');
     }
 }
 
@@ -559,6 +594,60 @@ function scheduleUserConfigSave() {
         saveUserConfig(getGenerationConfig());
         saveUserConfigTimer = null;
     }, 150);
+}
+
+function getNpuPollBounds() {
+    const min = npuPollIntervalInput ? parseInt(npuPollIntervalInput.min, 10) : 200;
+    const max = npuPollIntervalInput ? parseInt(npuPollIntervalInput.max, 10) : 5000;
+    return {
+        min: Number.isFinite(min) ? min : 200,
+        max: Number.isFinite(max) ? max : 5000
+    };
+}
+
+function setNpuPollInterval(value, persist = true) {
+    const bounds = getNpuPollBounds();
+    const safe = clamp(parseInt(value, 10) || DEFAULT_NPU_POLL_MS, bounds.min, bounds.max);
+    npuPollIntervalMs = safe;
+    if (npuPollIntervalInput) {
+        npuPollIntervalInput.value = safe;
+    }
+    if (npuPollIntervalValue) {
+        npuPollIntervalValue.textContent = safe;
+    }
+    if (persist) {
+        localStorage.setItem(NPU_POLL_INTERVAL_KEY, String(safe));
+    }
+    if (npuMonitorActive && npuPollInterval) {
+        clearInterval(npuPollInterval);
+        npuPollInterval = setInterval(pollNpuStatus, npuPollIntervalMs);
+    }
+}
+
+function initNpuPollInterval() {
+    const stored = parseInt(localStorage.getItem(NPU_POLL_INTERVAL_KEY) || '', 10);
+    const value = Number.isFinite(stored) ? stored : DEFAULT_NPU_POLL_MS;
+    setNpuPollInterval(value, false);
+}
+
+function getAutoLoadEnabled() {
+    const raw = localStorage.getItem(AUTO_LOAD_MODEL_KEY);
+    if (raw === null) return DEFAULT_AUTO_LOAD_MODEL;
+    return raw === '1' || raw === 'true';
+}
+
+function setAutoLoadEnabled(enabled, persist = true) {
+    const next = !!enabled;
+    if (autoLoadModelToggle) {
+        autoLoadModelToggle.checked = next;
+    }
+    if (persist) {
+        localStorage.setItem(AUTO_LOAD_MODEL_KEY, next ? '1' : '0');
+    }
+}
+
+function initAutoLoadSetting() {
+    setAutoLoadEnabled(getAutoLoadEnabled(), false);
 }
 
 function normalizeDownloadModels(models) {
@@ -889,10 +978,12 @@ async function attemptAutoLoadLastModel() {
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
+    initNpuPollInterval();
+    initAutoLoadSetting();
     await loadI18n(currentLang);
     await loadConfig();
     await restoreModelStatus();
-    if (!modelLoaded) {
+    if (!modelLoaded && getAutoLoadEnabled()) {
         attemptAutoLoadLastModel();
     }
     await loadSessions();
@@ -909,21 +1000,25 @@ async function init() {
 function setupLangSwitcher() {
     langBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        langDropdown.classList.toggle('hidden');
+        if (langDropdown.classList.contains('ui-open')) {
+            hideAnimated(langDropdown);
+        } else {
+            showAnimated(langDropdown);
+        }
     });
 
     document.querySelectorAll('.lang-option').forEach(btn => {
         btn.addEventListener('click', async () => {
             const lang = btn.dataset.lang;
             await loadI18n(lang);
-            langDropdown.classList.add('hidden');
+            hideAnimated(langDropdown);
         });
     });
 
     // Close dropdown when clicking outside
     document.addEventListener('click', (e) => {
         if (!langBtn.contains(e.target) && !langDropdown.contains(e.target)) {
-            langDropdown.classList.add('hidden');
+            hideAnimated(langDropdown);
         }
     });
 }
@@ -1027,7 +1122,6 @@ async function loadConfig() {
                 welcomeMaxPromptLenValue.textContent = welcomeMaxPromptLenInput.value;
             }
         }
-
         await loadLocalModels();
     } catch (error) {
         console.error('Failed to load config:', error);
@@ -2031,12 +2125,12 @@ async function deleteSession(sessionId) {
 function openRenameModal(sessionId, currentTitle) {
     renameSessionId = sessionId;
     renameInput.value = currentTitle || '';
-    renameModal.classList.remove('hidden');
+    showAnimated(renameModal);
     renameInput.focus();
 }
 
 function closeRenameModal() {
-    renameModal.classList.add('hidden');
+    hideAnimated(renameModal);
     renameSessionId = null;
 }
 
@@ -2485,16 +2579,16 @@ async function cancelDownload() {
 }
 
 function openSettingsModal() {
-    settingsModal.classList.remove('hidden');
+    showAnimated(settingsModal);
 }
 
 function closeSettingsModal() {
-    settingsModal.classList.add('hidden');
+    hideAnimated(settingsModal);
 }
 
 function openDownloadModal() {
     if (!downloadModal) return;
-    downloadModal.classList.remove('hidden');
+    showAnimated(downloadModal);
     if (downloadSearchInput) {
         downloadSearchInput.focus();
     } else if (downloadModelInput) {
@@ -2504,7 +2598,7 @@ function openDownloadModal() {
 
 function closeDownloadModal() {
     if (!downloadModal) return;
-    downloadModal.classList.add('hidden');
+    hideAnimated(downloadModal);
 }
 
 function autoResize(textarea) {
@@ -2676,10 +2770,20 @@ function setupEventListeners() {
     // Settings tabs
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', () => {
+            const targetId = `tab-${btn.dataset.tab}`;
+            const target = document.getElementById(targetId);
+            if (!target) return;
+            if (btn.classList.contains('active')) return;
+
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
             btn.classList.add('active');
-            document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
+
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('hidden');
+                const isActive = content === target;
+                content.classList.toggle('active', isActive);
+                content.setAttribute('aria-hidden', isActive ? 'false' : 'true');
+            });
         });
     });
 }
@@ -2720,6 +2824,17 @@ function setupSettingsListeners() {
         maxPromptLenValue.textContent = maxPromptLenInput.value;
         updateReloadRequirement();
     });
+
+    if (npuPollIntervalInput && npuPollIntervalValue) {
+        npuPollIntervalInput.addEventListener('input', () => {
+            setNpuPollInterval(npuPollIntervalInput.value);
+        });
+    }
+    if (autoLoadModelToggle) {
+        autoLoadModelToggle.addEventListener('change', () => {
+            setAutoLoadEnabled(autoLoadModelToggle.checked);
+        });
+    }
 
     systemPromptInput.addEventListener('input', () => {
         scheduleUserConfigSave();
@@ -2876,7 +2991,11 @@ function initDraggablePanel(panel, handle, key) {
 
 function setPerformancePanelVisible(visible) {
     if (!performancePanel) return;
-    performancePanel.classList.toggle('hidden', !visible);
+    if (visible) {
+        showAnimated(performancePanel);
+    } else {
+        hideAnimated(performancePanel);
+    }
     if (performancePanelToggleBtn) {
         performancePanelToggleBtn.classList.toggle('active', visible);
     }
@@ -2894,7 +3013,7 @@ function initPerformancePanel() {
     initDraggablePanel(performancePanel, performancePanelHandle, PERF_PANEL_POS_KEY);
     if (performancePanelToggleBtn) {
         performancePanelToggleBtn.addEventListener('click', () => {
-            const next = performancePanel.classList.contains('hidden');
+            const next = !performancePanel.classList.contains('ui-open');
             setPerformancePanelVisible(next);
         });
     }
@@ -2917,11 +3036,12 @@ const npuStatus = document.getElementById('npuStatus');
 let npuMonitorActive = false;
 let npuPollInterval = null;
 let npuChartCtx = null;
+let npuPollIntervalMs = DEFAULT_NPU_POLL_MS;
 
 function initNpuMonitor() {
     npuMonitorBtn.addEventListener('click', toggleNpuMonitor);
     closeNpuMonitorBtn.addEventListener('click', () => {
-        npuMonitorPanel.classList.add('hidden');
+        hideAnimated(npuMonitorPanel);
     });
 
     if (npuChart) {
@@ -2933,12 +3053,12 @@ function initNpuMonitor() {
 }
 
 async function toggleNpuMonitor() {
-    if (npuMonitorPanel.classList.contains('hidden')) {
-        npuMonitorPanel.classList.remove('hidden');
+    if (npuMonitorPanel.classList.contains('ui-open')) {
+        hideAnimated(npuMonitorPanel);
+    } else {
+        showAnimated(npuMonitorPanel);
         requestAnimationFrame(() => applyPanelPosition(npuMonitorPanel, NPU_PANEL_POS_KEY));
         await startNpuMonitor();
-    } else {
-        npuMonitorPanel.classList.add('hidden');
     }
 }
 
@@ -2955,7 +3075,7 @@ async function startNpuMonitor() {
             npuStatus.textContent = searching
                 ? (t('npu_monitor_searching') || 'Searching...')
                 : (t('npu_monitor_active') || 'Monitoring active');
-            npuPollInterval = setInterval(pollNpuStatus, 1000);
+            npuPollInterval = setInterval(pollNpuStatus, npuPollIntervalMs);
             pollNpuStatus();
         } else {
             npuStatus.textContent = t('npu_monitor_unavailable') || 'NPU monitoring not available on this system';

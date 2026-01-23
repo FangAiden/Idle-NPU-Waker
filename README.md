@@ -1,32 +1,32 @@
 ﻿# Idle NPU Waker
 
-[简体中文](README_zh.md) | **English**
+**简体中文** | [English](README_en.md)
 
-**Idle NPU Waker** is a local AI chat client built with **Python** and a Web UI.
-It integrates **Intel OpenVINO GenAI** for AI PCs with NPUs (e.g. Intel Core Ultra) and provides fast local inference with CPU/GPU fallback.
+**Idle NPU Waker** 是一个基于 **Python** 的本地 AI 聊天客户端，提供 Web UI。
+应用整合 **Intel OpenVINO GenAI**，面向具备 NPU 的 AI PC，实现低延迟本地推理，并支持 CPU/GPU 回退。
 
-> **New:** Reasoning models (e.g. DeepSeek-R1) are supported. Outputs with `<think>` are shown in a collapsible Thinking panel.
+> **新特性：** 推理模型输出中的 `<think>` 会显示在可折叠的思考面板中。
 
-![Application Screenshot](assets/screenshot1.png)
-![Application Screenshot](assets/screenshot2.png)
-
----
-
-## Highlights
-
-- **Multi-device inference:** NPU / GPU / CPU with automatic fallback.
-- **Model management:** local scan, ModelScope download, per-model settings from `generation_config.json` and `app/model_settings.json`.
-- **Welcome flow:** load a model before chatting, with a top-bar model switcher.
-- **Streaming chat:** token streaming, temporary chats, edit/retry/copy actions.
-- **Rich rendering:** Markdown, Mermaid, and KaTeX math.
-- **Performance panels:** tokens/s, model memory, download status, draggable NPU monitor (when available).
-- **File attachments:** attach text files (512 KB per file) and send to the model.
+![应用截图](assets/screenshot1.png)
+![应用截图](assets/screenshot2.png)
 
 ---
 
-## ModelScope Download Suggestions
+## 功能亮点
 
-Paste any ModelScope repo id in the download panel. Examples:
+- **多设备推理：** NPU / GPU / CPU 自动回退。
+- **模型管理：** 本地扫描、ModelScope 下载；基于 `generation_config.json` 与 `app/model_settings.json` 自动解析支持的设置项。
+- **欢迎页流程：** 必须加载模型后才能进入对话，顶部支持模型切换。
+- **流式对话：** 实时输出、临时对话、编辑/重试/复制。
+- **富文本渲染：** Markdown、Mermaid、KaTeX 数学公式。
+- **性能面板：** tokens/s、模型内存、下载状态、可拖动 NPU 监控（系统支持时生效）。
+- **文件附件：** 支持文本文件上传，单文件 512 KB。
+
+---
+
+## ModelScope 下载示例
+
+在下载面板中可直接粘贴任意 ModelScope 模型仓库 ID。示例：
 
 - `OpenVINO/Qwen3-8B-int4-cw-ov`
 - `OpenVINO/DeepSeek-R1-Distill-Qwen-1.5B-int4-cw-ov`
@@ -40,11 +40,11 @@ Paste any ModelScope repo id in the download panel. Examples:
 
 ---
 
-## Requirements
+## 环境要求
 
-- **OS:** Windows 10 / 11 (recommended), Linux
-- **Python:** 3.10 - 3.12
-- **Key dependencies:**
+- **操作系统：** Windows 10 / 11（推荐）、Linux
+- **Python：** 3.10 - 3.12
+- **关键依赖：**
   - `openvino >= 2025.1.0`
   - `openvino-genai >= 2025.1.0`
   - `openvino-tokenizers >= 2025.1.0`
@@ -53,16 +53,16 @@ Paste any ModelScope repo id in the download panel. Examples:
 
 ---
 
-## Installation & Usage
+## 安装与运行
 
-### 1. Clone Repository
+### 1. 克隆仓库
 
 ```bash
 git clone https://github.com/FangAiden/Idle-NPU-Waker.git
 cd Idle-NPU-Waker
 ```
 
-### 2. Install Dependencies
+### 2. 安装依赖
 
 ```bash
 python -m venv venv
@@ -70,50 +70,50 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-### 3. Run Web UI (FastAPI + Frontend)
+### 3. 运行 Web UI（FastAPI + 前端）
 
 ```bash
 python main.py
 ```
 
-Or:
+或：
 
 ```bash
 python backend/server.py
 ```
 
-Open `http://127.0.0.1:8000` in your browser. The API is available under `/api`.
+浏览器打开 `http://127.0.0.1:8000`，API 路径为 `/api`。
 
-### 4. Build EXE (Optional)
+### 4. 打包 EXE（可选）
 
 ```bash
 python build.py
 ```
 
-Output: `dist/IdleNPUWaker.exe`
+输出：`dist/IdleNPUWaker.exe`
 
 ---
 
-## Project Structure
+## 项目结构
 
 ```text
 Idle-NPU-Waker/
-├─ main.py                  # Web entry
-├─ build.py                 # PyInstaller build script (optional)
-├─ backend/                 # FastAPI backend + NPU monitor
-├─ frontend/                # Web UI assets
-├─ models/                  # Model storage (auto-generated)
-├─ .download_temp/          # Download cache
+├─ main.py                  # Web 入口
+├─ build.py                 # PyInstaller 打包脚本（可选）
+├─ backend/                 # FastAPI 后端 + NPU 监控
+├─ frontend/                # Web UI 静态资源
+├─ models/                  # 模型目录（自动生成）
+├─ .download_temp/          # 下载缓存
 ├─ app/
-│  ├─ config.py             # Global config
-│  ├─ core/                 # OpenVINO runtime + workers
-│  ├─ utils/                # Model scanning and helpers
-│  └─ model_settings.json   # Per-model settings schema
+│  ├─ config.py             # 全局配置
+│  ├─ core/                 # OpenVINO 运行时与推理线程
+│  ├─ utils/                # 扫描与工具
+│  └─ model_settings.json   # 模型设置项规则
 └─ requirements.txt
 ```
 
 ---
 
-## License
+## 许可证
 
 GPLv3 License
