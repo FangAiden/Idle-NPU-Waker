@@ -31,7 +31,12 @@ from app.config import (
 )
 from app.core.runtime import AVAILABLE_DEVICES
 from app.core.session import SessionManager
-from app.model_configs import PRESET_MODELS, MODEL_SPECIFIC_CONFIGS
+from app.model_configs import (
+    PRESET_MODELS,
+    MODEL_SPECIFIC_CONFIGS,
+    NPU_COLLECTION_MODELS,
+    NPU_COLLECTION_URL,
+)
 from app.utils.config_loader import load_model_json_configs, resolve_supported_setting_keys
 from app.utils.scanner import scan_dirs
 from backend.download_service import DownloadService
@@ -189,6 +194,8 @@ def api_config():
         "default_config": DEFAULT_CONFIG,
         "config_groups": CONFIG_GROUPS,
         "preset_models": PRESET_MODELS,
+        "download_models": NPU_COLLECTION_MODELS,
+        "download_collection_url": NPU_COLLECTION_URL,
         "model_specific_configs": MODEL_SPECIFIC_CONFIGS,
         "available_devices": AVAILABLE_DEVICES,
         "models_dir": str(MODELS_DIR),
@@ -556,10 +563,17 @@ def index():
     index_path = FRONTEND_DIR / "index.html"
     if not index_path.exists():
         raise HTTPException(status_code=404, detail="Frontend not built")
-    return FileResponse(index_path)
+    return FileResponse(index_path, headers={"Cache-Control": "no-store"})
+
+class NoCacheStaticFiles(StaticFiles):
+    async def get_response(self, path: str, scope):
+        response = await super().get_response(path, scope)
+        if response.status_code == 200:
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
 
-app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+app.mount("/static", NoCacheStaticFiles(directory=FRONTEND_DIR), name="static")
 
 
 @app.on_event("shutdown")

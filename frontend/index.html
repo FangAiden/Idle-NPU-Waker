@@ -335,6 +335,31 @@
                 <button class="close-btn" id="closeDownloadBtn" type="button">&times;</button>
             </div>
             <div class="modal-content">
+                <div class="download-catalog">
+                    <div class="download-catalog-header">
+                        <div class="download-catalog-title" data-i18n="download_catalog_title">NPU Optimized Models</div>
+                        <div class="download-catalog-actions">
+                            <input
+                                type="text"
+                                id="downloadSearchInput"
+                                class="download-search"
+                                data-i18n-placeholder="download_search_placeholder"
+                                placeholder="Search model name or ID..."
+                            >
+                            <a
+                                class="download-collection-link"
+                                id="downloadCollectionLink"
+                                href="https://www.modelscope.cn/collections/LLMs-optimized-for-NPU-13ad4be17f8740"
+                                target="_blank"
+                                rel="noopener"
+                                data-i18n="download_open_collection"
+                            >View Collection</a>
+                        </div>
+                    </div>
+                    <div class="download-cards" id="downloadCards"></div>
+                    <div class="download-cards-empty hidden" id="downloadCardsEmpty" data-i18n="download_card_empty">No models found</div>
+                </div>
+                <div class="download-divider"></div>
                 <div class="setting-group">
                     <label data-i18n="label_download_model">Model ID</label>
                     <input

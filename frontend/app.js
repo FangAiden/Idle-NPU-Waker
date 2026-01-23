@@ -8,6 +8,7 @@ let isGenerating = false;
 let modelLoaded = false;
 let config = null;
 let presetModels = [];
+let downloadCatalogModels = [];
 let localModels = [];
 let availableDevices = [];
 let supportedSettingKeys = null;
@@ -27,6 +28,7 @@ const LAST_MODEL_KEY = 'last_model_config';
 let systemStatusInterval = null;
 let autoScrollEnabled = true;
 const SCROLL_BOTTOM_THRESHOLD = 80;
+let codeBlockObserver = null;
 
 // i18n State
 let currentLang = localStorage.getItem('lang') || 'en_US';
@@ -94,6 +96,10 @@ const closeDownloadBtn = document.getElementById('closeDownloadBtn');
 const downloadModelInput = document.getElementById('downloadModelInput');
 const downloadModelList = document.getElementById('downloadModelList');
 const downloadModelBtn = document.getElementById('downloadModelBtn');
+const downloadCards = document.getElementById('downloadCards');
+const downloadCardsEmpty = document.getElementById('downloadCardsEmpty');
+const downloadSearchInput = document.getElementById('downloadSearchInput');
+const downloadCollectionLink = document.getElementById('downloadCollectionLink');
 
 // Language Elements
 const langBtn = document.getElementById('langBtn');
@@ -192,6 +198,7 @@ function applyI18n() {
     setModelReloadRequired(modelReloadRequired);
     updateModelSwitcherLabel();
     updateSystemStatus();
+    renderDownloadCards(downloadSearchInput ? downloadSearchInput.value : '');
 }
 
 function showToast(message, duration = 2000) {
@@ -469,6 +476,35 @@ function applySupportedSettings(keys) {
     });
 }
 
+function normalizeDownloadModels(models) {
+    const items = Array.isArray(models) ? models : [];
+    return items.map((item) => {
+        if (typeof item === 'string') {
+            const repoId = item;
+            const name = repoId.split('/').pop() || repoId;
+            return { repo_id: repoId, name, libraries: [] };
+        }
+        if (item && typeof item === 'object') {
+            const repoId = item.repo_id || item.id || item.repoId || '';
+            if (!repoId) return null;
+            const name = item.name || item.display_name || repoId.split('/').pop() || repoId;
+            const downloads = Number.isFinite(item.downloads)
+                ? item.downloads
+                : parseInt(item.downloads, 10);
+            return {
+                repo_id: repoId,
+                name,
+                downloads: Number.isFinite(downloads) ? downloads : null,
+                license: item.license || '',
+                libraries: Array.isArray(item.libraries) ? item.libraries : [],
+                model_id: item.model_id || null,
+                url: item.url || ''
+            };
+        }
+        return null;
+    }).filter(Boolean);
+}
+
 function normalizePresetModels(models) {
     const items = Array.isArray(models) ? models : [];
     return items.map((item) => {
@@ -487,12 +523,137 @@ function normalizePresetModels(models) {
 function populateDownloadModelList() {
     if (!downloadModelList) return;
     downloadModelList.innerHTML = '';
-    presetModels.forEach((model) => {
+    const list = downloadCatalogModels.length ? downloadCatalogModels : presetModels;
+    list.forEach((model) => {
         const option = document.createElement('option');
-        option.value = model.id;
-        option.textContent = model.label;
+        const value = model.repo_id || model.id || model;
+        if (!value) return;
+        option.value = value;
+        option.textContent = model.name || model.label || value;
         downloadModelList.appendChild(option);
     });
+}
+
+function formatDownloadCount(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) return '';
+    if (number >= 1_000_000) {
+        return `${(number / 1_000_000).toFixed(1).replace(/\\.0$/, '')}M`;
+    }
+    if (number >= 1_000) {
+        return `${(number / 1_000).toFixed(1).replace(/\\.0$/, '')}k`;
+    }
+    return `${number}`;
+}
+
+function formatLibraryLabel(value) {
+    const label = String(value || '').trim();
+    if (!label) return '';
+    if (label.toLowerCase() === 'openvino') return 'OpenVINO';
+    if (label.toLowerCase() === 'pytorch') return 'PyTorch';
+    return label;
+}
+
+function buildModelScopeUrl(repoId) {
+    return `https://www.modelscope.cn/models/${repoId}`;
+}
+
+function setSelectedDownloadRepo(repoId) {
+    if (!downloadCards) return;
+    downloadCards.querySelectorAll('.download-card').forEach((card) => {
+        card.classList.toggle('selected', repoId && card.dataset.repoId === repoId);
+    });
+}
+
+function renderDownloadCards(filterText = '') {
+    if (!downloadCards) return;
+    const query = (filterText || '').trim().toLowerCase();
+    downloadCards.innerHTML = '';
+    let visible = 0;
+    const useLabel = escapeHtml(t('download_card_action_use', 'Use ID'));
+    const downloadLabel = escapeHtml(t('download_card_action_download', 'Download'));
+    const viewLabel = escapeHtml(t('download_card_action_view', 'View'));
+    const downloadsLabel = escapeHtml(t('download_card_downloads', 'Downloads'));
+    const licenseLabel = escapeHtml(t('download_card_license', 'License'));
+
+    downloadCatalogModels.forEach((model) => {
+        const repoId = model.repo_id || '';
+        if (!repoId) return;
+        const name = model.name || repoId;
+        const haystack = `${name} ${repoId}`.toLowerCase();
+        if (query && !haystack.includes(query)) return;
+
+        const downloads = formatDownloadCount(model.downloads);
+        const metaParts = [];
+        if (downloads) {
+            metaParts.push(`<span class="download-meta-pill">${downloadsLabel}: ${downloads}</span>`);
+        }
+        if (model.license) {
+            metaParts.push(`<span class="download-meta-pill">${licenseLabel}: ${escapeHtml(model.license)}</span>`);
+        }
+        (model.libraries || []).forEach((lib) => {
+            const label = formatLibraryLabel(lib);
+            if (label) {
+                metaParts.push(`<span class="download-meta-pill">${escapeHtml(label)}</span>`);
+            }
+        });
+
+        const url = model.url || buildModelScopeUrl(repoId);
+        const card = document.createElement('div');
+        card.className = 'download-card';
+        card.dataset.repoId = repoId;
+        card.innerHTML = `
+            <div class="download-card-title">${escapeHtml(name)}</div>
+            <div class="download-card-repo">${escapeHtml(repoId)}</div>
+            <div class="download-card-meta">${metaParts.join('')}</div>
+            <div class="download-card-actions">
+                <button class="download-card-btn" type="button" data-action="use">${useLabel}</button>
+                <button class="download-card-btn primary" type="button" data-action="download">${downloadLabel}</button>
+                <a class="download-card-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">${viewLabel}</a>
+            </div>
+        `;
+        downloadCards.appendChild(card);
+        visible += 1;
+    });
+
+    if (downloadCardsEmpty) {
+        downloadCardsEmpty.classList.toggle('hidden', visible > 0);
+    }
+    if (downloadModelInput) {
+        setSelectedDownloadRepo(downloadModelInput.value.trim());
+    }
+    if (downloadRunning && downloadCards) {
+        downloadCards.querySelectorAll('button').forEach((btn) => {
+            btn.disabled = true;
+        });
+    }
+}
+
+function handleDownloadCardClick(event) {
+    const card = event.target.closest('.download-card');
+    if (!card || !downloadCards || !downloadCards.contains(card)) return;
+    const repoId = card.dataset.repoId;
+    if (!repoId) return;
+
+    const actionBtn = event.target.closest('[data-action]');
+    if (actionBtn) {
+        if (downloadModelInput) {
+            downloadModelInput.value = repoId;
+        }
+        setSelectedDownloadRepo(repoId);
+        if (actionBtn.dataset.action === 'download') {
+            startDownload();
+        } else if (actionBtn.dataset.action === 'use') {
+            if (downloadModelInput) downloadModelInput.focus();
+        }
+        return;
+    }
+    if (event.target.closest('a')) return;
+    if (downloadModelInput) {
+        downloadModelInput.value = repoId;
+        downloadModelInput.focus();
+    }
+    setSelectedDownloadRepo(repoId);
 }
 
 function renderAttachments() {
@@ -657,6 +818,7 @@ async function init() {
     initWelcomeOverlay();
     initPerformancePanel();
     initSystemStatus();
+    initCodeBlockObserver();
 }
 
 function setupLangSwitcher() {
@@ -742,10 +904,17 @@ async function loadConfig() {
         const data = await response.json();
         config = data.default_config;
         presetModels = normalizePresetModels(data.preset_models || []);
+        downloadCatalogModels = normalizeDownloadModels(
+            data.download_models || data.preset_models || []
+        );
         availableDevices = data.available_devices || ['AUTO'];
         maxFileBytes = data.max_file_bytes || maxFileBytes;
 
         populateDownloadModelList();
+        renderDownloadCards(downloadSearchInput ? downloadSearchInput.value : '');
+        if (downloadCollectionLink && data.download_collection_url) {
+            downloadCollectionLink.href = data.download_collection_url;
+        }
 
         // Populate devices
         if (deviceSelect) deviceSelect.innerHTML = '';
@@ -1543,6 +1712,19 @@ function renderCodeHighlight(container) {
     });
 }
 
+function initCodeBlockObserver() {
+    if (!messagesDiv || codeBlockObserver) return;
+    codeBlockObserver = new MutationObserver((mutations) => {
+        for (const mutation of mutations) {
+            mutation.addedNodes.forEach((node) => {
+                if (node.nodeType !== 1) return;
+                renderCodeHighlight(node);
+            });
+        }
+    });
+    codeBlockObserver.observe(messagesDiv, { childList: true, subtree: true });
+}
+
 function setupMermaid() {
     if (mermaidReady || typeof mermaid === 'undefined') return;
     mermaid.initialize({ startOnLoad: false, securityLevel: 'strict', theme: 'dark' });
@@ -2076,7 +2258,13 @@ function setDownloadRunning(running) {
     }
     if (downloadModelBtn) downloadModelBtn.disabled = running;
     if (downloadModelInput) downloadModelInput.disabled = running;
+    if (downloadSearchInput) downloadSearchInput.disabled = running;
     if (cancelDownloadBtn) cancelDownloadBtn.disabled = !running;
+    if (downloadCards) {
+        downloadCards.querySelectorAll('button').forEach((btn) => {
+            btn.disabled = running;
+        });
+    }
     if (!running && progressFill) {
         progressFill.classList.remove('indeterminate');
         progressFill.style.width = '0%';
@@ -2229,7 +2417,9 @@ function closeSettingsModal() {
 function openDownloadModal() {
     if (!downloadModal) return;
     downloadModal.classList.remove('hidden');
-    if (downloadModelInput) {
+    if (downloadSearchInput) {
+        downloadSearchInput.focus();
+    } else if (downloadModelInput) {
         downloadModelInput.focus();
     }
 }
@@ -2339,6 +2529,17 @@ function setupEventListeners() {
                 startDownload();
             }
         });
+        downloadModelInput.addEventListener('input', () => {
+            setSelectedDownloadRepo(downloadModelInput.value.trim());
+        });
+    }
+    if (downloadSearchInput) {
+        downloadSearchInput.addEventListener('input', () => {
+            renderDownloadCards(downloadSearchInput.value);
+        });
+    }
+    if (downloadCards) {
+        downloadCards.addEventListener('click', handleDownloadCardClick);
     }
 
     // Rename modal

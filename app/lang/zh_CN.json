@@ -2,6 +2,15 @@
     "app_title": "Idle NPU Waker",
     "btn_new_chat": "新建对话",
     "group_download": "下载模型 (魔搭社区)",
+    "download_catalog_title": "NPU 优化模型",
+    "download_search_placeholder": "搜索模型名称或 ID...",
+    "download_open_collection": "查看合集",
+    "download_card_empty": "未找到匹配模型",
+    "download_card_action_use": "使用 ID",
+    "download_card_action_download": "下载",
+    "download_card_action_view": "查看",
+    "download_card_downloads": "下载量",
+    "download_card_license": "许可证",
     "placeholder_repo": "选择或输入模型ID...",
     "btn_download": "下载",
     "btn_pause": "暂停",
@@ -27,7 +36,6 @@
     "load_stage_ready": "模型就绪",
     "load_stage_error": "加载失败",
     "status_no_model": "未加载模型",
-
     "group_run": "运行设置",
     "label_device": "设备",
     "label_model": "本地模型",
@@ -41,13 +49,10 @@
     "model_switcher_empty": "没有本地模型",
     "btn_open_download": "下载模型",
     "conf_max_prompt_len": "最大上下文长度",
-
     "opt_local_models": "本地模型",
     "opt_preset_models": "预设模型",
     "opt_select_model": "-- 选择模型 --",
-
     "tab_model": "模型",
-
     "input_placeholder": "输入消息 (Enter 发送)...",
     "btn_send": "发送",
     "btn_stop": "停止",
@@ -56,16 +61,13 @@
     "btn_edit": "编辑",
     "btn_retry": "重试",
     "default_chat_name": "新对话",
-
     "msg_thinking": "思考中...",
     "think_status_running": "深度思考中...",
     "think_status_done": "已深度思考",
     "think_cost_pattern": "（用时 {0:.1f} 秒）",
     "think_duration_pattern": "（{0:.1f} 秒）",
-
     "tip_load_model_first": "请先加载模型",
     "tip_start_chatting": "开始聊天吧",
-
     "menu_delete_chat": "删除会话",
     "dialog_confirm_delete": "确认删除",
     "dialog_delete_msg": "确定要删除会话 \"{0}\" 吗?",
@@ -79,10 +81,8 @@
     "dialog_loaded_title": "就绪",
     "dialog_loaded_msg": "模型加载成功 ({0})",
     "dialog_error": "错误",
-
     "crash_title": "程序崩溃",
     "crash_message": "发生未处理的异常，详情请查看 crash.log\n\n{0}",
-
     "dl_task_running": "下载任务进行中...",
     "dl_init_process": "正在初始化下载进程...",
     "dl_paused": "已暂停",
@@ -92,50 +92,40 @@
     "dl_error_reason": "\n可能原因：缺少依赖库 (modelscope) 或网络连接失败。",
     "label_stats": "生成统计:",
     "stats_pattern": "{0} tokens · {1:.1f} t/s · {2:.1f} s",
-
     "group_model_params": "模型参数配置",
     "btn_settings": "设置",
     "btn_back_chat": "返回对话",
-
     "grp_generation": "生成参数",
     "grp_context": "上下文",
     "grp_advanced": "高级设置",
-
     "conf_max_tokens": "最大生成长度",
     "conf_temp": "随机性",
     "conf_top_p": "Top-P",
     "conf_top_k": "Top-K",
     "conf_rep_penalty": "重复惩罚",
     "conf_do_sample": "启用采样",
-
     "conf_history_turns": "历史对话轮数",
     "conf_sys_prompt": "系统提示词",
-
     "conf_add_gen_prompt": "添加生成引导",
     "conf_enable_thinking": "启用深度思考",
     "conf_skip_special": "跳过特殊字符",
-
     "opt_enabled": "启用",
     "msg_already_loaded": "模型已加载",
-
     "msg_copied": "复制成功",
     "msg_file_attached": "已附加文件: {0}",
     "msg_file_too_large": "文件已截断: {0}",
     "msg_file_read_failed": "读取文件失败: {0}",
     "msg_file_skipped_binary": "已跳过二进制文件: {0}",
-
     "menu_rename_chat": "重命名",
     "dialog_rename_title": "重命名会话",
     "dialog_rename_msg": "请输入新的会话名称",
     "label_attachments": "附件",
     "btn_remove": "移除",
-
     "npu_monitor_title": "NPU 监控",
     "npu_utilization": "利用率",
     "npu_monitor_active": "监控中",
     "npu_monitor_searching": "检测中...",
     "npu_monitor_unavailable": "此系统不支持NPU监控",
-
     "btn_temp_chat": "临时对话",
     "temp_chat_name": "临时对话",
     "temp_chat_tooltip": "临时对话不会保存历史记录",
