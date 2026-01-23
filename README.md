@@ -71,7 +71,16 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-### 3. 运行 Web UI（FastAPI + 前端）
+### 3. 使用 Tauri 开发运行（推荐）
+
+```bash
+cargo tauri dev
+```
+
+`cargo tauri dev` 会自动启动 Python 后端并加载内嵌 UI。  
+如需指定 Python 解释器，可设置环境变量 `IDLE_NPU_PYTHON`。
+
+### 3.1 仅后端/浏览器运行（可选）
 
 ```bash
 python main.py
@@ -86,14 +95,6 @@ python backend/server.py
 浏览器打开 `http://127.0.0.1:8000`，API 路径为 `/api`。
 
 > 安装版默认把模型与缓存存放在 `%LOCALAPPDATA%\IdleNPUWaker`（可通过环境变量 `IDLE_NPU_DATA_DIR` 指定）。
-
-### 3.1 使用 Tauri 开发运行（可选）
-
-```bash
-cargo tauri dev
-```
-
-如需指定 Python 解释器，可设置环境变量 `IDLE_NPU_PYTHON`。
 
 ### 4. 打包桌面安装包（Tauri）
 

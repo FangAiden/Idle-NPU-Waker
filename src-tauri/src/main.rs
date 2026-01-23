@@ -40,10 +40,14 @@ fn spawn_backend<R: tauri::Runtime>(
             .parent()
             .unwrap()
             .to_path_buf();
+        let bootstrap = "import os,runpy,sys; \
+sys.stdout = sys.__stdout__ or open(os.devnull, 'w', encoding='utf-8'); \
+sys.stderr = sys.__stderr__ or open(os.devnull, 'w', encoding='utf-8'); \
+runpy.run_path('main.py', run_name='__main__')";
         app.shell()
             .command(python)
             .current_dir(root)
-            .args(["main.py"])
+            .args(["-c", bootstrap])
     } else {
         app.shell().sidecar("IdleNPUWaker")?
     };

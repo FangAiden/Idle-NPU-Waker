@@ -71,7 +71,16 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-### 3. Run Web UI (FastAPI + Frontend)
+### 3. Run with Tauri (Recommended)
+
+```bash
+cargo tauri dev
+```
+
+`cargo tauri dev` starts the Python backend automatically and opens the embedded UI.  
+To specify the Python interpreter, set `IDLE_NPU_PYTHON`.
+
+### 3.1 Backend/Browser Only (Optional)
 
 ```bash
 python main.py
@@ -86,14 +95,6 @@ python backend/server.py
 Open `http://127.0.0.1:8000` in your browser. The API is available under `/api`.
 
 > The packaged app stores models and caches in `%LOCALAPPDATA%\\IdleNPUWaker` by default (override with `IDLE_NPU_DATA_DIR`).
-
-### 3.1 Run with Tauri (Optional, Dev)
-
-```bash
-cargo tauri dev
-```
-
-To specify the Python interpreter, set `IDLE_NPU_PYTHON`.
 
 ### 4. Build Desktop Installer (Tauri)
 
