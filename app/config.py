@@ -5,18 +5,36 @@ from pathlib import Path
 APP_VERSION = "0.2.0-alpha"
 MAX_FILE_BYTES = 512 * 1024
 
-if getattr(sys, 'frozen', False):
-    ROOT_DIR = Path(sys.executable).parent.resolve()
+if getattr(sys, "frozen", False):
+    APP_ROOT = Path(sys.executable).parent.resolve()
 else:
-    ROOT_DIR = Path(__file__).parent.parent.resolve()
+    APP_ROOT = Path(__file__).parent.parent.resolve()
 
-MODELS_DIR = ROOT_DIR / "models"
+env_data_dir = os.environ.get("IDLE_NPU_DATA_DIR")
+if env_data_dir:
+    DATA_DIR = Path(env_data_dir).expanduser().resolve()
+elif getattr(sys, "frozen", False):
+    if sys.platform.startswith("win"):
+        base = os.environ.get("LOCALAPPDATA") or os.environ.get("APPDATA")
+        if base:
+            DATA_DIR = Path(base) / "IdleNPUWaker"
+        else:
+            DATA_DIR = Path.home() / "AppData" / "Local" / "IdleNPUWaker"
+    elif sys.platform == "darwin":
+        DATA_DIR = Path.home() / "Library" / "Application Support" / "IdleNPUWaker"
+    else:
+        xdg = os.environ.get("XDG_DATA_HOME")
+        DATA_DIR = Path(xdg) / "IdleNPUWaker" if xdg else Path.home() / ".local" / "share" / "IdleNPUWaker"
+else:
+    DATA_DIR = APP_ROOT
+
+MODELS_DIR = DATA_DIR / "models"
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
-DOWNLOAD_CACHE_DIR = ROOT_DIR / ".download_temp"
+DOWNLOAD_CACHE_DIR = DATA_DIR / ".download_temp"
 DOWNLOAD_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
-OV_CACHE_DIR = ROOT_DIR / ".ov_cache"
+OV_CACHE_DIR = DATA_DIR / ".ov_cache"
 OV_CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_CONFIG = {

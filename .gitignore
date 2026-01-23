@@ -11,3 +11,5 @@ crash.log
 sessions.json
 .ov_cache/
 .claude/
+src-tauri/target/
+src-tauri/bin/

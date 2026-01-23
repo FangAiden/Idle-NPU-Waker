@@ -85,13 +85,31 @@ python backend/server.py
 
 Open `http://127.0.0.1:8000` in your browser. The API is available under `/api`.
 
-### 4. Build EXE (Optional)
+> The packaged app stores models and caches in `%LOCALAPPDATA%\\IdleNPUWaker` by default (override with `IDLE_NPU_DATA_DIR`).
+
+### 3.1 Run with Tauri (Optional, Dev)
+
+```bash
+cargo tauri dev
+```
+
+To specify the Python interpreter, set `IDLE_NPU_PYTHON`.
+
+### 4. Build Desktop Installer (Tauri)
+
+Prerequisites:
+- Rust toolchain (`rustup`)
+- Tauri CLI: `cargo install tauri-cli`
+
+Build:
 
 ```bash
 python build.py
 ```
 
-Output: `dist/IdleNPUWaker.exe`
+`build.py` builds the backend EXE via PyInstaller and then runs `cargo tauri build`.
+
+Speed tips: use `python build.py --skip-backend` if the backend is unchanged, or `python build.py --skip-tauri` to only rebuild the EXE.
 
 ---
 

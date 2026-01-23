@@ -85,13 +85,31 @@ python backend/server.py
 
 浏览器打开 `http://127.0.0.1:8000`，API 路径为 `/api`。
 
-### 4. 打包 EXE（可选）
+> 安装版默认把模型与缓存存放在 `%LOCALAPPDATA%\IdleNPUWaker`（可通过环境变量 `IDLE_NPU_DATA_DIR` 指定）。
+
+### 3.1 使用 Tauri 开发运行（可选）
+
+```bash
+cargo tauri dev
+```
+
+如需指定 Python 解释器，可设置环境变量 `IDLE_NPU_PYTHON`。
+
+### 4. 打包桌面安装包（Tauri）
+
+需要先安装：
+- Rust 工具链（`rustup`）
+- Tauri CLI：`cargo install tauri-cli`
+
+执行打包：
 
 ```bash
 python build.py
 ```
 
-输出：`dist/IdleNPUWaker.exe`
+`build.py` 会先用 PyInstaller 生成后端 EXE，再调用 `cargo tauri build` 生成安装包。
+
+加速提示：如果后端未改动，可执行 `python build.py --skip-backend`；如果仅后端更新，可用 `python build.py --skip-tauri` 先生成 EXE。
 
 ---
 
