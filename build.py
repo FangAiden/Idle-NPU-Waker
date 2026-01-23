@@ -15,17 +15,49 @@ DIST_DIR = ROOT_DIR / "dist"
 TAURI_DIR = ROOT_DIR / "src-tauri"
 TAURI_BIN_DIR = TAURI_DIR / "bin"
 TAURI_TARGET_DIR = TAURI_DIR / "target" / "release" / "bundle"
+BUILD_VENV_DIR = ROOT_DIR / ".venv-build"
+REQ_HASH_FILE = BUILD_VENV_DIR / "requirements.sha256"
 
-COLLECT_PACKAGES = [
+COLLECT_ALL_PACKAGES = [
     "openvino_genai",
     "openvino",
     "openvino_tokenizers",
     "modelscope",
 ]
 
+COLLECT_BINARIES = [
+    "openvino",
+    "openvino_genai",
+    "openvino_tokenizers",
+]
+
+COLLECT_SUBMODULES = [
+    "openvino",
+    "openvino_genai",
+    "openvino_tokenizers",
+    "modelscope",
+]
+
+COLLECT_DATA = [
+    "openvino",
+]
+
 ADD_DATA = [
     "app;app",
     "frontend;frontend",
+]
+
+SLIM_EXCLUDES = [
+    "torch",
+    "torchvision",
+    "torchaudio",
+    "triton",
+    "tensorflow",
+    "jax",
+    "jaxlib",
+    "cupy",
+    "xformers",
+    "bitsandbytes",
 ]
 
 
@@ -38,6 +70,16 @@ def run_command(cmd: list[str], cwd: Path | None = None) -> bool:
     print("Command:\n" + " ".join(cmd))
     result = subprocess.run(cmd, cwd=str(cwd) if cwd else None)
     return result.returncode == 0
+
+
+def sha256_file(path: Path) -> str:
+    import hashlib
+
+    sha = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            sha.update(chunk)
+    return sha.hexdigest()
 
 
 def latest_mtime(paths: list[Path]) -> float:
@@ -113,10 +155,53 @@ def clean_build_dirs() -> None:
             path.unlink()
 
 
-def build_backend_exe() -> bool:
+def get_venv_python(venv_dir: Path) -> Path:
+    if sys.platform.startswith("win"):
+        return venv_dir / "Scripts" / "python.exe"
+    return venv_dir / "bin" / "python"
+
+
+def ensure_build_venv(force: bool = False) -> Path | None:
+    print_step("Preparing build venv")
+    base_python = os.environ.get("IDLE_NPU_BUILD_PYTHON") or sys.executable
+    venv_python = get_venv_python(BUILD_VENV_DIR)
+
+    if force and BUILD_VENV_DIR.exists():
+        shutil.rmtree(BUILD_VENV_DIR)
+
+    if not venv_python.exists():
+        if not run_command([base_python, "-m", "venv", str(BUILD_VENV_DIR)]):
+            return None
+
+    req_hash = sha256_file(ROOT_DIR / "requirements.txt")
+    needs_install = True
+    if REQ_HASH_FILE.exists():
+        try:
+            needs_install = REQ_HASH_FILE.read_text(encoding="utf-8").strip() != req_hash
+        except OSError:
+            needs_install = True
+
+    if needs_install:
+        if not run_command([str(venv_python), "-m", "pip", "install", "-U", "pip"]):
+            return None
+        if not run_command([str(venv_python), "-m", "pip", "install", "-r", "requirements.txt"]):
+            return None
+        if not run_command([str(venv_python), "-m", "pip", "install", "pyinstaller"]):
+            return None
+        REQ_HASH_FILE.write_text(req_hash, encoding="utf-8")
+
+    return venv_python
+
+
+def build_backend_exe(
+    collect_all: bool,
+    python_exe: Path,
+    upx_dir: str | None,
+    slim: bool,
+) -> bool:
     print_step("Building backend EXE (PyInstaller)")
     cmd = [
-        sys.executable,
+        str(python_exe),
         "-m",
         "PyInstaller",
         "--noconsole",
@@ -126,11 +211,24 @@ def build_backend_exe() -> bool:
     ]
     if (ROOT_DIR / ICON_FILE).exists():
         cmd.insert(4, f"--icon={ICON_FILE}")
+    if upx_dir:
+        cmd.append(f"--upx-dir={upx_dir}")
 
     for data in ADD_DATA:
         cmd.append(f"--add-data={data}")
-    for pkg in COLLECT_PACKAGES:
-        cmd.append(f"--collect-all={pkg}")
+    if collect_all:
+        for pkg in COLLECT_ALL_PACKAGES:
+            cmd.append(f"--collect-all={pkg}")
+    else:
+        for pkg in COLLECT_BINARIES:
+            cmd.append(f"--collect-binaries={pkg}")
+        for pkg in COLLECT_SUBMODULES:
+            cmd.append(f"--collect-submodules={pkg}")
+        for pkg in COLLECT_DATA:
+            cmd.append(f"--collect-data={pkg}")
+    if slim:
+        for mod in SLIM_EXCLUDES:
+            cmd.append(f"--exclude-module={mod}")
 
     start = time.time()
     ok = run_command(cmd)
@@ -224,6 +322,19 @@ def main() -> None:
     parser.add_argument("--skip-tauri", action="store_true", help="Skip Tauri bundling.")
     parser.add_argument("--force-backend", action="store_true", help="Force PyInstaller rebuild.")
     parser.add_argument("--force-tauri", action="store_true", help="Force Tauri rebuild.")
+    parser.add_argument("--no-venv", action="store_true", help="Build with current interpreter instead of a clean venv.")
+    parser.add_argument("--force-venv", action="store_true", help="Recreate the build venv.")
+    parser.add_argument("--upx-dir", help="Optional UPX directory for PyInstaller compression.")
+    parser.add_argument(
+        "--slim",
+        action="store_true",
+        help="Exclude large optional ML packages (torch, triton, transformers, scipy, etc.).",
+    )
+    parser.add_argument(
+        "--collect-all",
+        action="store_true",
+        help="Use PyInstaller --collect-all for OpenVINO/ModelScope packages (larger size).",
+    )
     parser.add_argument("--clean", action="store_true", help="Clean build/dist before building.")
     args = parser.parse_args()
 
@@ -231,8 +342,20 @@ def main() -> None:
         clean_build_dirs()
 
     if not args.skip_backend:
+        python_exe = Path(sys.executable)
+        if not args.no_venv:
+            venv_python = ensure_build_venv(force=args.force_venv)
+            if not venv_python:
+                sys.exit(1)
+            python_exe = venv_python
+
+        upx_dir = args.upx_dir or os.environ.get("IDLE_NPU_UPX_DIR")
+        if upx_dir and not Path(upx_dir).exists():
+            print_step(f"UPX dir not found: {upx_dir}")
+            upx_dir = None
+
         if should_rebuild_backend(args.force_backend):
-            if not build_backend_exe():
+            if not build_backend_exe(args.collect_all, python_exe, upx_dir, args.slim):
                 sys.exit(1)
         else:
             print_step("Backend EXE is up to date")

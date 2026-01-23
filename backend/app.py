@@ -1,4 +1,5 @@
 import json
+import os
 import queue
 import sys
 import threading
@@ -42,7 +43,7 @@ from app.utils.scanner import scan_dirs
 from backend.download_service import DownloadService
 from backend.llm_service import LLMService
 from backend.npu_monitor import get_npu_monitor
-from backend.system_status import get_memory_status
+from backend.system_status import get_memory_status, get_process_memory
 
 
 FRONTEND_DIR = ROOT_DIR / "frontend"
@@ -531,6 +532,7 @@ def api_download_stop():
 def api_status():
     return {
         "memory": get_memory_status(),
+        "app": get_process_memory(os.getpid()),
         "download": download_service.get_status(),
         "model": llm_service.get_status(),
     }

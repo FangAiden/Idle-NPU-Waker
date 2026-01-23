@@ -1,3 +1,4 @@
+import multiprocessing
 import os
 import sys
 
@@ -15,6 +16,7 @@ def _ensure_stream(stream, fallback_label: str):
     return open(os.devnull, "w", encoding="utf-8")
 
 def main() -> None:
+    multiprocessing.freeze_support()
     sys.stdout = _ensure_stream(sys.stdout, "__stdout__")
     sys.stderr = _ensure_stream(sys.stderr, "__stderr__")
     from backend.server import main as run_server

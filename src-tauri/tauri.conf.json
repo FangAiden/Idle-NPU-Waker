@@ -4,7 +4,7 @@
   "version": "0.2.0",
   "identifier": "com.idlenpu.waker",
   "build": {
-    "beforeDevCommand": "",
+    "beforeDevCommand": "python main.py",
     "beforeBuildCommand": "",
     "devUrl": "http://127.0.0.1:8000",
     "frontendDist": "../frontend"
@@ -30,8 +30,14 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["msi", "nsis"],
+    "targets": ["msi"],
     "icon": ["../app.ico"],
-    "externalBin": ["bin/IdleNPUWaker"]
+    "externalBin": ["bin/IdleNPUWaker"],
+    "windows": {
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    }
   }
 }

@@ -91,6 +91,7 @@ const welcomeLoadBtn = document.getElementById('welcomeLoadBtn');
 const welcomeDownloadBtn = document.getElementById('welcomeDownloadBtn');
 const welcomeLoading = document.getElementById('welcomeLoading');
 const welcomeLoadingText = document.getElementById('welcomeLoadingText');
+const welcomeAppMemory = document.getElementById('welcomeAppMemory');
 const welcomeLocalModelSelect = document.getElementById('welcomeLocalModelSelect');
 const welcomeDeviceSelect = document.getElementById('welcomeDeviceSelect');
 const welcomeMaxPromptLenInput = document.getElementById('welcomeMaxPromptLen');
@@ -175,6 +176,19 @@ function t(key, ...args) {
     return text;
 }
 
+function updateTrayMenuLabels() {
+    const tauri = window.__TAURI__;
+    if (!tauri || !tauri.core || typeof tauri.core.invoke !== 'function') {
+        return;
+    }
+    tauri.core.invoke('update_tray_labels', {
+        show_label: t('tray_show'),
+        quit_label: t('tray_quit')
+    }).catch((err) => {
+        console.warn('Failed to update tray menu:', err);
+    });
+}
+
 function applyI18n() {
     // Apply to elements with data-i18n attribute
     document.querySelectorAll('[data-i18n]').forEach(el => {
@@ -208,6 +222,7 @@ function applyI18n() {
     updateModelSwitcherLabel();
     updateSystemStatus();
     renderDownloadCards(downloadSearchInput ? downloadSearchInput.value : '');
+    updateTrayMenuLabels();
 }
 
 function showToast(message, duration = 2000) {
@@ -314,27 +329,54 @@ function formatBytes(bytes) {
     return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[index]}`;
 }
 
-function updateModelMemoryStatus(model, mem) {
+function updateModelMemoryStatus(model, appMem) {
     if (!memoryStatus) return;
-    const label = t('status_model_memory', 'Model Mem');
-    if (!model || !model.loaded) {
+    const modelLoaded = !!(model && model.loaded);
+    const modelLoading = !!(model && model.loading);
+    const appRss = appMem && typeof appMem.rss === 'number' ? appMem.rss : 0;
+    const appPrivate = appMem && typeof appMem.private === 'number' ? appMem.private : 0;
+    const label = modelLoaded
+        ? t('status_model_memory', 'Model Mem')
+        : t('status_app_memory', 'App Mem');
+
+    if (!modelLoaded && !modelLoading && !appRss) {
         memoryStatus.textContent = `${label} --`;
         memoryStatus.title = '';
         memoryStatus.classList.remove('active');
         return;
     }
-    const rss = model.memory && typeof model.memory.rss === 'number' ? model.memory.rss : 0;
-    const privateBytes = model.memory && typeof model.memory.private === 'number' ? model.memory.private : 0;
-    memoryStatus.textContent = `${label} ${formatBytes(rss)}`;
-    const titleParts = [];
-    if (privateBytes > 0 && privateBytes !== rss) {
-        titleParts.push(`${t('status_memory_private', 'Private')} ${formatBytes(privateBytes)}`);
+
+    if (modelLoaded) {
+        const rss = model.memory && typeof model.memory.rss === 'number' ? model.memory.rss : 0;
+        const privateBytes = model.memory && typeof model.memory.private === 'number' ? model.memory.private : 0;
+        memoryStatus.textContent = `${label} ${formatBytes(rss)}`;
+        const titleParts = [];
+        if (privateBytes > 0 && privateBytes !== rss) {
+            titleParts.push(`${t('status_memory_private', 'Private')} ${formatBytes(privateBytes)}`);
+        }
+        memoryStatus.title = titleParts.join(' | ');
+        memoryStatus.classList.add('active');
+        return;
     }
-    if (mem && typeof mem.percent === 'number') {
-        titleParts.push(`${t('status_memory_system', 'System')} ${Math.round(mem.percent)}% (${formatBytes(mem.used)} / ${formatBytes(mem.total)})`);
+
+    memoryStatus.textContent = `${label} ${formatBytes(appRss)}`;
+    const titleParts = [];
+    if (appPrivate > 0 && appPrivate !== appRss) {
+        titleParts.push(`${t('status_memory_private', 'Private')} ${formatBytes(appPrivate)}`);
     }
     memoryStatus.title = titleParts.join(' | ');
     memoryStatus.classList.add('active');
+}
+
+function updateWelcomeAppMemory(appMem, model) {
+    if (!welcomeAppMemory) return;
+    if (!model || !model.loading) {
+        welcomeAppMemory.textContent = '';
+        return;
+    }
+    const label = t('status_app_memory', 'App Mem');
+    const rss = appMem && typeof appMem.rss === 'number' ? appMem.rss : 0;
+    welcomeAppMemory.textContent = `${label} ${rss ? formatBytes(rss) : '--'}`;
 }
 
 function updateDownloadStatusBadge(status) {
@@ -356,9 +398,24 @@ function updateDownloadStatusBadge(status) {
 function updateModelLoadStatus(model) {
     if (!model || !model.loading) return;
     if (modelReloadRequired) return;
-    const stage = model.load_stage || '';
-    const stageLabel = stage ? t(`load_stage_${stage}`, '') : '';
-    const message = stageLabel || model.load_message || stage || '';
+    const rawStage = model.load_stage || '';
+    let stage = rawStage;
+    if (stage.startsWith('load_stage_')) {
+        stage = stage.slice('load_stage_'.length);
+    }
+    stage = stage === 'starting' ? 'start' : stage;
+    const stageKey = stage ? `load_stage_${stage}` : '';
+    const stageLabel = stageKey ? t(stageKey, '') : '';
+    const resolvedStage = stageLabel && stageLabel !== stageKey ? stageLabel : '';
+    let message = '';
+    const rawMessage = model.load_message || '';
+    if (rawMessage.startsWith('load_stage_')) {
+        const messageLabel = t(rawMessage, '');
+        message = messageLabel && messageLabel !== rawMessage ? messageLabel : rawMessage;
+    } else {
+        message = rawMessage;
+    }
+    message = resolvedStage || message || stage || '';
     const display = message || t('status_loading_model', '...');
     statusDot.className = 'status-dot loading';
     modelStatus.textContent = t('status_loading_model', display);
@@ -373,7 +430,8 @@ async function updateSystemStatus() {
         if (!response.ok) return;
         const data = await response.json();
         updateModelLoadStatus(data.model);
-        updateModelMemoryStatus(data.model, data.memory);
+        updateModelMemoryStatus(data.model, data.app);
+        updateWelcomeAppMemory(data.app, data.model);
         updateDownloadStatusBadge(data.download);
     } catch (error) {
         // Ignore polling errors

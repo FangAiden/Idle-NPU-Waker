@@ -108,7 +108,15 @@ Build:
 python build.py
 ```
 
-`build.py` builds the backend EXE via PyInstaller and then runs `cargo tauri build`.
+`build.py` uses a clean build venv by default (`.venv-build`), builds the backend EXE via PyInstaller, then runs `cargo tauri build`.
+
+The default build uses a slim collection mode (no `--collect-all`) to reduce size. If dependencies are missing at runtime, try `python build.py --collect-all`.
+
+To skip the build venv, use `python build.py --no-venv`. Recreate it with `python build.py --force-venv`.
+
+MSI-only output (NSIS disabled for faster builds).
+
+Optional compression: if UPX is installed, pass `python build.py --upx-dir <UPX_DIR>` or set `IDLE_NPU_UPX_DIR`.
 
 Speed tips: use `python build.py --skip-backend` if the backend is unchanged, or `python build.py --skip-tauri` to only rebuild the EXE.
 

@@ -24,12 +24,14 @@
     "status_loaded": "已加载 ({0})",
     "status_reload_required": "需要重新加载模型",
     "status_model_memory": "模型内存",
+    "status_app_memory": "应用内存",
     "status_memory_private": "私有",
     "status_memory_system": "系统",
     "status_download": "下载",
     "status_download_idle": "空闲",
     "status_download_running": "下载中",
     "load_stage_start": "准备中...",
+    "load_stage_starting": "准备中...",
     "load_stage_tokenizer": "初始化分词器...",
     "load_stage_pipeline": "编译模型...",
     "load_stage_fallback": "回退到 CPU...",
@@ -68,6 +70,7 @@
     "think_duration_pattern": "（{0:.1f} 秒）",
     "tip_load_model_first": "请先加载模型",
     "tip_start_chatting": "开始聊天吧",
+    "tip_first_load_slow": "首次加载可能较慢，请耐心等待。",
     "menu_delete_chat": "删除会话",
     "dialog_confirm_delete": "确认删除",
     "dialog_delete_msg": "确定要删除会话 \"{0}\" 吗?",
@@ -132,5 +135,7 @@
     "btn_collapse_sidebar": "收起侧边栏",
     "btn_expand_sidebar": "展开侧边栏",
     "conf_npu_poll_interval": "NPU 状态轮询间隔",
-    "conf_auto_load_model": "启动时自动加载上次模型"
+    "conf_auto_load_model": "启动时自动加载上次模型",
+    "tray_show": "显示主界面",
+    "tray_quit": "退出"
 }

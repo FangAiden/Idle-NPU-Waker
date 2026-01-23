@@ -2,10 +2,23 @@ import multiprocessing
 import queue
 import threading
 import time
+from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from app.core.llm_process import llm_process_entry
+from app.config import DATA_DIR
 from backend.system_status import get_process_memory
+
+_LOG_PATH = Path(DATA_DIR) / "backend.log"
+
+def _log(msg: str) -> None:
+    try:
+        _LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        ts = time.strftime("%Y-%m-%d %H:%M:%S")
+        with open(_LOG_PATH, "a", encoding="utf-8") as f:
+            f.write(f"[{ts}][pid {multiprocessing.current_process().pid}] {msg}\n")
+    except Exception:
+        pass
 
 
 class LLMService:
@@ -36,12 +49,14 @@ class LLMService:
 
     def _start_process_if_needed(self) -> None:
         if self._process is None or not self._process.is_alive():
+            _log("Spawning model process")
             self._process = self._ctx.Process(
                 target=llm_process_entry,
                 args=(self._cmd_queue, self._res_queue, self._stop_event),
                 daemon=True,
             )
             self._process.start()
+            _log(f"Model process started pid={self._process.pid}")
             self._monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
             self._monitor_thread.start()
 
@@ -57,6 +72,7 @@ class LLMService:
             msg_type = msg.get("type")
 
             if msg_type == "loaded":
+                _log("Load complete")
                 with self._lock:
                     self._device = msg.get("dev")
                     self._load_result = {"ok": True, "dev": self._device or "AUTO"}
@@ -67,6 +83,7 @@ class LLMService:
                 continue
 
             if msg_type == "load_stage":
+                _log(f"Load stage: {msg.get('stage')} msg={msg.get('message')}")
                 with self._lock:
                     self._loading = True
                     self._load_stage = msg.get("stage", "") or ""
@@ -90,6 +107,7 @@ class LLMService:
                     self._generation_queue.put({"type": "error", "msg": msg.get("msg", "Unknown error")})
                     self._generation_done.set()
                 else:
+                    _log(f"Load error: {msg.get('msg')}")
                     with self._lock:
                         self._load_result = {"ok": False, "error": msg.get("msg", "Unknown error")}
                         self._loading = False
@@ -109,16 +127,43 @@ class LLMService:
             self._load_result = None
             self._model_path = model_dir
             self._loading = True
-            self._load_stage = "starting"
-            self._load_message = "Starting"
+            self._load_stage = "start"
+            self._load_message = ""
             self._load_started_at = time.time()
 
+            _log(f"Load request path={model_dir} device={device} source={source}")
             self._cmd_queue.put(
                 {"type": "load", "args": (source, model_id, model_dir, device, max_prompt_len)}
             )
 
-        if not self._load_event.wait(timeout=300):
-            raise RuntimeError("Model load timed out")
+        deadline = time.time() + 300
+        while True:
+            if self._load_event.wait(timeout=0.5):
+                break
+            if time.time() >= deadline:
+                _log("Model load timed out")
+                with self._lock:
+                    self._load_result = {"ok": False, "error": "Model load timed out"}
+                    self._loading = False
+                    self._load_stage = "error"
+                    self._load_message = "Model load timed out"
+                    self._load_event.set()
+                if self._process is not None and self._process.is_alive():
+                    try:
+                        self._process.terminate()
+                        self._process.join(timeout=1)
+                    except Exception:
+                        pass
+                break
+            if self._process is not None and not self._process.is_alive():
+                _log("Model process exited during load")
+                with self._lock:
+                    self._load_result = {"ok": False, "error": "Model process exited"}
+                    self._loading = False
+                    self._load_stage = "error"
+                    self._load_message = "Model process exited"
+                    self._load_event.set()
+                break
 
         if not self._load_result or not self._load_result.get("ok"):
             error_msg = "Model load failed"

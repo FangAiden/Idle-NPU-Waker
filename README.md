@@ -108,7 +108,15 @@ python backend/server.py
 python build.py
 ```
 
-`build.py` 会先用 PyInstaller 生成后端 EXE，再调用 `cargo tauri build` 生成安装包。
+`build.py` 默认使用干净的构建 venv（`.venv-build`），先用 PyInstaller 生成后端 EXE，再调用 `cargo tauri build` 生成安装包。
+
+默认使用精简收集方式（不再 `--collect-all`），体积更小；如遇到缺失依赖，可改用 `python build.py --collect-all`。
+
+如果不想使用构建 venv，可执行 `python build.py --no-venv`。如需重建 venv，使用 `python build.py --force-venv`。
+
+仅生成 MSI（已禁用 NSIS，打包更快）。
+
+可选压缩：若已安装 UPX，可用 `python build.py --upx-dir <UPX目录>` 或设置 `IDLE_NPU_UPX_DIR`。
 
 加速提示：如果后端未改动，可执行 `python build.py --skip-backend`；如果仅后端更新，可用 `python build.py --skip-tauri` 先生成 EXE。
 

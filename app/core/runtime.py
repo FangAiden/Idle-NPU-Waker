@@ -4,18 +4,23 @@ import re
 import time
 import sys
 from pathlib import Path
-from typing import Optional, Tuple, Callable
-import openvino_genai as ov_genai
-from app.config import MODELS_DIR, OV_CACHE_DIR
+from typing import Optional, Tuple, Callable, Any, TYPE_CHECKING
+from app.config import MODELS_DIR, OV_CACHE_DIR, DATA_DIR
+
+if TYPE_CHECKING:
+    import openvino_genai as ov_genai
+
+LOG_PATH = DATA_DIR / "runtime.log"
 
 def log_to_file(msg):
     try:
-        with open("runtime.log", "a", encoding="utf-8") as f:
+        LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with open(LOG_PATH, "a", encoding="utf-8") as f:
             import datetime
             ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            f.write(f"[{ts}] {msg}\n")
+            f.write(f"[{ts}][pid {os.getpid()}] {msg}\n")
         print(f"[RUNTIME] {msg}")
-    except:
+    except Exception:
         print(msg)
 
 def _sanitize(name: str) -> str:
@@ -79,9 +84,16 @@ class RuntimeState:
         self.model_id: str = ""
         self.model_dir: Optional[str] = None
         self.device: str = "AUTO"
-        self.tokenizer: Optional[ov_genai.Tokenizer] = None
-        self.pipe: Optional[ov_genai.LLMPipeline] = None
+        self.tokenizer: Optional[Any] = None
+        self.pipe: Optional[Any] = None
         self.model_path: Optional[Path] = None
+        self._ov_genai: Optional[Any] = None
+
+    def _get_ov_genai(self):
+        if self._ov_genai is None:
+            import openvino_genai as ov_genai
+            self._ov_genai = ov_genai
+        return self._ov_genai
 
     def unload(self):
         """安全卸载模型，防止显存残留导致闪退"""
@@ -151,6 +163,7 @@ class RuntimeState:
             progress_cb("tokenizer", "Initializing tokenizer")
         
         try:
+            ov_genai = self._get_ov_genai()
             tok = ov_genai.Tokenizer(str_path)
         except Exception as e:
             log_to_file(f"FATAL: Tokenizer init failed: {e}")

@@ -25,12 +25,14 @@
     "status_loaded": "Loaded ({0})",
     "status_reload_required": "Reload required",
     "status_model_memory": "Model Mem",
+    "status_app_memory": "App Mem",
     "status_memory_private": "Private",
     "status_memory_system": "System",
     "status_download": "Download",
     "status_download_idle": "Idle",
     "status_download_running": "Running",
     "load_stage_start": "Preparing...",
+    "load_stage_starting": "Preparing...",
     "load_stage_tokenizer": "Initializing tokenizer...",
     "load_stage_pipeline": "Compiling model...",
     "load_stage_fallback": "Falling back to CPU...",
@@ -77,6 +79,7 @@
 
     "tip_load_model_first": "Please load a model first",
     "tip_start_chatting": "Start chatting to begin",
+    "tip_first_load_slow": "First load may take a while.",
 
     "menu_delete_chat": "Delete Chat",
 
@@ -153,5 +156,7 @@
     "temp_chat_name": "Temporary Chat",
     "temp_chat_tooltip": "Temporary chats are not saved to history",
     "btn_collapse_sidebar": "Collapse sidebar",
-    "btn_expand_sidebar": "Expand sidebar"
+    "btn_expand_sidebar": "Expand sidebar",
+    "tray_show": "Show",
+    "tray_quit": "Quit"
 }
