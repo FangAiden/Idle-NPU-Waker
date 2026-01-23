@@ -25,6 +25,7 @@ let downloadAbortController = null;
 let loadedModelConfig = { path: '', device: 'AUTO', maxPromptLen: 16384 };
 let modelReloadRequired = false;
 const LAST_MODEL_KEY = 'last_model_config';
+const USER_CONFIG_KEY = 'user_config';
 let systemStatusInterval = null;
 let autoScrollEnabled = true;
 const SCROLL_BOTTOM_THRESHOLD = 80;
@@ -476,6 +477,90 @@ function applySupportedSettings(keys) {
     });
 }
 
+function loadUserConfig() {
+    try {
+        const raw = localStorage.getItem(USER_CONFIG_KEY);
+        if (!raw) return null;
+        const data = JSON.parse(raw);
+        if (!data || typeof data !== 'object') return null;
+        return data;
+    } catch (error) {
+        return null;
+    }
+}
+
+function saveUserConfig(configObj) {
+    if (!configObj || typeof configObj !== 'object') return;
+    localStorage.setItem(USER_CONFIG_KEY, JSON.stringify(configObj));
+}
+
+function normalizeNumber(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeInt(value) {
+    if (typeof value === 'number' && Number.isFinite(value)) return Math.trunc(value);
+    const parsed = parseInt(value, 10);
+    return Number.isFinite(parsed) ? parsed : null;
+}
+
+function applyConfigToInputs(cfg) {
+    if (!cfg) return;
+    const maxTokens = normalizeInt(cfg.max_new_tokens);
+    if (maxTokens !== null && maxTokensInput) {
+        maxTokensInput.value = maxTokens;
+        maxTokensValue.textContent = maxTokens;
+    }
+    const temperature = normalizeNumber(cfg.temperature);
+    if (temperature !== null && temperatureInput) {
+        temperatureInput.value = temperature;
+        temperatureValue.textContent = temperature;
+    }
+    const topP = normalizeNumber(cfg.top_p);
+    if (topP !== null && topPInput) {
+        topPInput.value = topP;
+        topPValue.textContent = topP;
+    }
+    const topK = normalizeInt(cfg.top_k);
+    if (topK !== null && topKInput) {
+        topKInput.value = topK;
+        topKValue.textContent = topK;
+    }
+    const repPenalty = normalizeNumber(cfg.repetition_penalty);
+    if (repPenalty !== null && repPenaltyInput) {
+        repPenaltyInput.value = repPenalty;
+        repPenaltyValue.textContent = repPenalty;
+    }
+    if (typeof cfg.do_sample === 'boolean' && doSampleInput) {
+        doSampleInput.checked = cfg.do_sample;
+    }
+    const historyTurns = normalizeInt(cfg.max_history_turns);
+    if (historyTurns !== null && historyTurnsInput) {
+        historyTurnsInput.value = historyTurns;
+        historyTurnsValue.textContent = historyTurns;
+    }
+    if (typeof cfg.system_prompt === 'string' && systemPromptInput) {
+        systemPromptInput.value = cfg.system_prompt;
+    }
+    if (typeof cfg.enable_thinking === 'boolean' && enableThinkingInput) {
+        enableThinkingInput.checked = cfg.enable_thinking;
+    }
+}
+
+let saveUserConfigTimer = null;
+
+function scheduleUserConfigSave() {
+    if (saveUserConfigTimer) {
+        clearTimeout(saveUserConfigTimer);
+    }
+    saveUserConfigTimer = setTimeout(() => {
+        saveUserConfig(getGenerationConfig());
+        saveUserConfigTimer = null;
+    }, 150);
+}
+
 function normalizeDownloadModels(models) {
     const items = Array.isArray(models) ? models : [];
     return items.map((item) => {
@@ -902,7 +987,9 @@ async function loadConfig() {
     try {
         const response = await fetch(`${API_BASE}/api/config`);
         const data = await response.json();
-        config = data.default_config;
+        const defaultConfig = data.default_config || {};
+        const storedConfig = loadUserConfig();
+        config = storedConfig ? { ...defaultConfig, ...storedConfig } : defaultConfig;
         presetModels = normalizePresetModels(data.preset_models || []);
         downloadCatalogModels = normalizeDownloadModels(
             data.download_models || data.preset_models || []
@@ -934,21 +1021,7 @@ async function loadConfig() {
 
         // Set default values
         if (config) {
-            maxTokensInput.value = config.max_new_tokens || 1024;
-            maxTokensValue.textContent = maxTokensInput.value;
-            temperatureInput.value = config.temperature || 0.7;
-            temperatureValue.textContent = temperatureInput.value;
-            topPInput.value = config.top_p || 0.9;
-            topPValue.textContent = topPInput.value;
-            topKInput.value = config.top_k || 40;
-            topKValue.textContent = topKInput.value;
-            repPenaltyInput.value = config.repetition_penalty || 1.1;
-            repPenaltyValue.textContent = repPenaltyInput.value;
-            doSampleInput.checked = config.do_sample !== false;
-            historyTurnsInput.value = config.max_history_turns || 10;
-            historyTurnsValue.textContent = historyTurnsInput.value;
-            systemPromptInput.value = config.system_prompt || '';
-            enableThinkingInput.checked = config.enable_thinking !== false;
+            applyConfigToInputs(config);
             if (welcomeMaxPromptLenInput && welcomeMaxPromptLenValue) {
                 welcomeMaxPromptLenInput.value = config.max_prompt_len || maxPromptLenInput.value;
                 welcomeMaxPromptLenValue.textContent = welcomeMaxPromptLenInput.value;
@@ -1860,10 +1933,15 @@ function updateScrollState() {
     }
 }
 
-function scrollToBottom(force = false) {
+function scrollToBottom(force = false, behavior = 'auto') {
     if (!chatContainer) return;
     if (!force && !autoScrollEnabled) return;
-    chatContainer.scrollTop = chatContainer.scrollHeight;
+    const top = chatContainer.scrollHeight;
+    if (behavior === 'smooth') {
+        chatContainer.scrollTo({ top, behavior: 'smooth' });
+    } else {
+        chatContainer.scrollTop = top;
+    }
     if (force) {
         autoScrollEnabled = true;
     }
@@ -2493,7 +2571,7 @@ function setupEventListeners() {
         });
     }
     if (scrollBottomBtn) {
-        scrollBottomBtn.addEventListener('click', () => scrollToBottom(true));
+        scrollBottomBtn.addEventListener('click', () => scrollToBottom(true, 'smooth'));
     }
     updateScrollState();
 
@@ -2610,31 +2688,49 @@ function setupSettingsListeners() {
     // Slider value displays
     maxTokensInput.addEventListener('input', () => {
         maxTokensValue.textContent = maxTokensInput.value;
+        scheduleUserConfigSave();
     });
 
     temperatureInput.addEventListener('input', () => {
         temperatureValue.textContent = temperatureInput.value;
+        scheduleUserConfigSave();
     });
 
     topPInput.addEventListener('input', () => {
         topPValue.textContent = topPInput.value;
+        scheduleUserConfigSave();
     });
 
     topKInput.addEventListener('input', () => {
         topKValue.textContent = topKInput.value;
+        scheduleUserConfigSave();
     });
 
     repPenaltyInput.addEventListener('input', () => {
         repPenaltyValue.textContent = repPenaltyInput.value;
+        scheduleUserConfigSave();
     });
 
     historyTurnsInput.addEventListener('input', () => {
         historyTurnsValue.textContent = historyTurnsInput.value;
+        scheduleUserConfigSave();
     });
 
     maxPromptLenInput.addEventListener('input', () => {
         maxPromptLenValue.textContent = maxPromptLenInput.value;
         updateReloadRequirement();
+    });
+
+    systemPromptInput.addEventListener('input', () => {
+        scheduleUserConfigSave();
+    });
+
+    doSampleInput.addEventListener('change', () => {
+        scheduleUserConfigSave();
+    });
+
+    enableThinkingInput.addEventListener('change', () => {
+        scheduleUserConfigSave();
     });
 }
 
