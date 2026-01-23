@@ -7,3 +7,12 @@
 [2026-01-23 16:36:32][pid 31048] Load stage: pipeline msg=Initializing pipeline on NPU
 [2026-01-23 16:36:32][pid 31048] Load stage: ready msg=Model ready
 [2026-01-23 16:36:32][pid 31048] Load complete
+[2026-01-23 17:29:21][pid 33804] Spawning model process
+[2026-01-23 17:29:21][pid 33804] Model process started pid=10644
+[2026-01-23 17:29:21][pid 33804] Load request path=C:\Users\28927\Documents\Dev\PythonProject\Idle-NPU-Waker\models\Qwen3-8B-int4-cw-ov device=NPU source=local
+[2026-01-23 17:29:22][pid 33804] Load stage: start msg=Starting
+[2026-01-23 17:29:22][pid 33804] Load stage: start msg=Loading C:\Users\28927\Documents\Dev\PythonProject\Idle-NPU-Waker\models\Qwen3-8B-int4-cw-ov
+[2026-01-23 17:29:23][pid 33804] Load stage: tokenizer msg=Initializing tokenizer
+[2026-01-23 17:30:04][pid 33804] Load stage: pipeline msg=Initializing pipeline on NPU
+[2026-01-23 17:30:04][pid 33804] Load stage: ready msg=Model ready
+[2026-01-23 17:30:04][pid 33804] Load complete

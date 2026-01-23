@@ -25,7 +25,7 @@
     "status_loaded": "Loaded ({0})",
     "status_reload_required": "Reload required",
     "status_model_memory": "Model Mem",
-    "status_app_memory": "App Mem",
+    "status_app_memory": "Backend Mem",
     "status_memory_private": "Private",
     "status_memory_system": "System",
     "status_download": "Download",

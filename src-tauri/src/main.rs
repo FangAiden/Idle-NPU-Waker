@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use std::io::Write;
 use std::net::TcpStream;
 use std::path::PathBuf;
 use std::sync::{
@@ -49,6 +50,33 @@ fn wait_for_port(host: &str, port: u16, timeout: Duration) -> bool {
     false
 }
 
+fn backend_host_port() -> (String, u16) {
+    let host = std::env::var("IDLE_NPU_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
+    let port: u16 = std::env::var("IDLE_NPU_PORT")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(8000);
+    let ui_host = if host == "0.0.0.0" {
+        "127.0.0.1".to_string()
+    } else {
+        host
+    };
+    (ui_host, port)
+}
+
+fn request_backend_exit(host: &str, port: u16) {
+    let addr: std::net::SocketAddr = match format!("{host}:{port}").parse() {
+        Ok(addr) => addr,
+        Err(_) => return,
+    };
+    if let Ok(mut stream) = TcpStream::connect_timeout(&addr, Duration::from_millis(300)) {
+        let req = format!(
+            "POST /api/app/exit HTTP/1.1\r\nHost: {host}:{port}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        );
+        let _ = stream.write_all(req.as_bytes());
+    }
+}
+
 fn spawn_backend<R: tauri::Runtime>(
     app: &tauri::AppHandle<R>,
     host: &str,
@@ -84,6 +112,8 @@ fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 }
 
 fn shutdown_backend<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    let (host, port) = backend_host_port();
+    request_backend_exit(&host, port);
     let child = {
         let state = app.state::<BackendState>();
         let mut guard = match state.0.lock() {

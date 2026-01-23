@@ -24,7 +24,7 @@
     "status_loaded": "已加载 ({0})",
     "status_reload_required": "需要重新加载模型",
     "status_model_memory": "模型内存",
-    "status_app_memory": "应用内存",
+    "status_app_memory": "后端内存",
     "status_memory_private": "私有",
     "status_memory_system": "系统",
     "status_download": "下载",

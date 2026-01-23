@@ -3,6 +3,7 @@ import os
 import queue
 import sys
 import threading
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -536,6 +537,21 @@ def api_status():
         "download": download_service.get_status(),
         "model": llm_service.get_status(),
     }
+
+
+@app.post("/api/app/exit")
+def api_app_exit():
+    def _shutdown():
+        try:
+            llm_service.shutdown()
+            download_service.stop()
+            npu_monitor.stop()
+        finally:
+            time.sleep(0.2)
+            os._exit(0)
+
+    threading.Thread(target=_shutdown, daemon=True).start()
+    return {"ok": True}
 
 
 @app.post("/api/npu/start")
