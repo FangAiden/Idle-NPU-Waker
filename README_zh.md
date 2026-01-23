@@ -2,7 +2,7 @@
 
 **简体中文** | [English](README.md)
 
-**Idle NPU Waker** 是一个基于 **Python** 与 **PyQt6** 的本地 AI 聊天客户端，提供可选 Web UI。
+**Idle NPU Waker** 是一个基于 **Python** 的本地 AI 聊天客户端，提供 Web UI。
 应用整合 **Intel OpenVINO GenAI**，面向具备 NPU 的 AI PC，实现低延迟本地推理，并支持 CPU/GPU 回退。
 
 > **新特性：** 推理模型输出中的 `<think>` 会显示在可折叠的思考面板中。
@@ -48,7 +48,6 @@
   - `openvino >= 2025.1.0`
   - `openvino-genai >= 2025.1.0`
   - `openvino-tokenizers >= 2025.1.0`
-  - `PyQt6`
   - `modelscope`
   - `fastapi`, `uvicorn`
 
@@ -71,13 +70,13 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-### 3. 运行桌面端（PyQt）
+### 3. 运行 Web UI（FastAPI + 前端）
 
 ```bash
 python main.py
 ```
 
-### 4. 运行 Web UI（FastAPI + 前端）
+或：
 
 ```bash
 python backend/server.py
@@ -85,7 +84,7 @@ python backend/server.py
 
 浏览器打开 `http://127.0.0.1:8000`，API 路径为 `/api`。
 
-### 5. 打包 EXE（可选）
+### 4. 打包 EXE（可选）
 
 ```bash
 python build.py
@@ -99,8 +98,8 @@ python build.py
 
 ```text
 Idle-NPU-Waker/
-├─ main.py                  # 桌面端入口
-├─ build.py                 # PyInstaller 打包脚本
+├─ main.py                  # Web 入口
+├─ build.py                 # PyInstaller 打包脚本（可选）
 ├─ backend/                 # FastAPI 后端 + NPU 监控
 ├─ frontend/                # Web UI 静态资源
 ├─ models/                  # 模型目录（自动生成）
@@ -108,7 +107,6 @@ Idle-NPU-Waker/
 ├─ app/
 │  ├─ config.py             # 全局配置
 │  ├─ core/                 # OpenVINO 运行时与推理线程
-│  ├─ ui/                   # PyQt UI
 │  ├─ utils/                # 扫描与工具
 │  └─ model_settings.json   # 模型设置项规则
 └─ requirements.txt

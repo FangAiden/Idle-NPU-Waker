@@ -2,7 +2,7 @@
 
 [简体中文](README_zh.md) | **English**
 
-**Idle NPU Waker** is a local AI chat client built with **Python** and **PyQt6**, with an optional Web UI.
+**Idle NPU Waker** is a local AI chat client built with **Python** and a Web UI.
 It integrates **Intel OpenVINO GenAI** for AI PCs with NPUs (e.g. Intel Core Ultra) and provides fast local inference with CPU/GPU fallback.
 
 > **New:** Reasoning models (e.g. DeepSeek-R1) are supported. Outputs with `<think>` are shown in a collapsible Thinking panel.
@@ -48,7 +48,6 @@ Paste any ModelScope repo id in the download panel. Examples:
   - `openvino >= 2025.1.0`
   - `openvino-genai >= 2025.1.0`
   - `openvino-tokenizers >= 2025.1.0`
-  - `PyQt6`
   - `modelscope`
   - `fastapi`, `uvicorn`
 
@@ -71,13 +70,13 @@ python -m venv venv
 pip install -r requirements.txt
 ```
 
-### 3. Run Desktop App (PyQt)
+### 3. Run Web UI (FastAPI + Frontend)
 
 ```bash
 python main.py
 ```
 
-### 4. Run Web UI (FastAPI + Frontend)
+Or:
 
 ```bash
 python backend/server.py
@@ -85,7 +84,7 @@ python backend/server.py
 
 Open `http://127.0.0.1:8000` in your browser. The API is available under `/api`.
 
-### 5. Build EXE (Optional)
+### 4. Build EXE (Optional)
 
 ```bash
 python build.py
@@ -99,8 +98,8 @@ Output: `dist/IdleNPUWaker.exe`
 
 ```text
 Idle-NPU-Waker/
-├─ main.py                  # Desktop entry
-├─ build.py                 # PyInstaller build script
+├─ main.py                  # Web entry
+├─ build.py                 # PyInstaller build script (optional)
 ├─ backend/                 # FastAPI backend + NPU monitor
 ├─ frontend/                # Web UI assets
 ├─ models/                  # Model storage (auto-generated)
@@ -108,7 +107,6 @@ Idle-NPU-Waker/
 ├─ app/
 │  ├─ config.py             # Global config
 │  ├─ core/                 # OpenVINO runtime + workers
-│  ├─ ui/                   # PyQt UI
 │  ├─ utils/                # Model scanning and helpers
 │  └─ model_settings.json   # Per-model settings schema
 └─ requirements.txt

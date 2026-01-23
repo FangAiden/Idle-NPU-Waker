@@ -15,8 +15,7 @@ COLLECT_PACKAGES = [
     "openvino_genai",
     "openvino",
     "openvino_tokenizers",
-    "modelscope",
-    "markdown"
+    "modelscope"
 ]
 
 ADD_DATA = [
