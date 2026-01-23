@@ -1252,6 +1252,12 @@ body {
     margin-bottom: 0;
 }
 
+.message-content hr {
+    border: none;
+    border-top: 1px solid var(--border-color);
+    margin: 16px 0;
+}
+
 .message-stats {
     margin-top: 12px;
     padding-top: 8px;
