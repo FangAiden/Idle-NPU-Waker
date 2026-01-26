@@ -30,6 +30,7 @@ from app.config import (
     CONFIG_GROUPS,
     MODELS_DIR,
     DOWNLOAD_CACHE_DIR,
+    DATA_DIR,
     MAX_FILE_BYTES,
 )
 from app.core.runtime import AVAILABLE_DEVICES
@@ -212,6 +213,25 @@ def api_config():
 
 LANG_DIR = ROOT_DIR / "app" / "lang"
 AVAILABLE_LANGS = ["en_US", "zh_CN"]
+LANG_PREF_FILE = DATA_DIR / "lang.json"
+
+
+def _load_saved_lang() -> str:
+    if not LANG_PREF_FILE.exists():
+        return "en_US"
+    try:
+        data = json.loads(LANG_PREF_FILE.read_text(encoding="utf-8"))
+        lang = data.get("lang")
+        return lang if lang in AVAILABLE_LANGS else "en_US"
+    except (OSError, json.JSONDecodeError, AttributeError):
+        return "en_US"
+
+
+current_lang = _load_saved_lang()
+
+
+class LangPreferenceRequest(BaseModel):
+    lang: str = Field(..., min_length=1)
 
 
 @app.get("/api/i18n")
@@ -228,6 +248,25 @@ def api_i18n(lang: str):
         raise HTTPException(status_code=404, detail="Language file not found")
     with open(lang_file, "r", encoding="utf-8") as f:
         return json.load(f)
+
+
+@app.get("/api/lang")
+def api_get_lang():
+    return {"lang": current_lang}
+
+
+@app.post("/api/lang")
+def api_set_lang(req: LangPreferenceRequest):
+    lang = req.lang
+    if lang not in AVAILABLE_LANGS:
+        raise HTTPException(status_code=400, detail="Unsupported language")
+    global current_lang
+    current_lang = lang
+    try:
+        LANG_PREF_FILE.write_text(json.dumps({"lang": lang}, ensure_ascii=False), encoding="utf-8")
+    except OSError:
+        pass
+    return {"lang": current_lang}
 
 
 @app.get("/api/models/local")

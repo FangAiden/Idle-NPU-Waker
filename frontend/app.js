@@ -40,7 +40,7 @@ const SCROLL_BOTTOM_THRESHOLD = 80;
 let codeBlockObserver = null;
 
 // i18n State
-let currentLang = localStorage.getItem('lang') || 'en_US';
+let currentLang = 'en_US';
 let i18nData = {};
 const LANG_LABELS = {
     'en_US': 'English',
@@ -166,6 +166,7 @@ async function loadI18n(lang) {
         i18nData = await response.json();
         currentLang = lang;
         localStorage.setItem('lang', lang);
+        persistLangPreference(lang);
         applyI18n();
         currentLangLabel.textContent = LANG_LABELS[lang] || lang;
     } catch (error) {
@@ -175,6 +176,31 @@ async function loadI18n(lang) {
             await loadI18n('en_US');
         }
     }
+}
+
+async function resolveInitialLang() {
+    const stored = localStorage.getItem('lang') || 'en_US';
+    try {
+        const response = await fetch(`${API_BASE}/api/lang`);
+        if (response.ok) {
+            const data = await response.json();
+            if (data && data.lang) {
+                return data.lang;
+            }
+        }
+    } catch (error) {
+        // Ignore and fall back
+    }
+    return stored;
+}
+
+function persistLangPreference(lang) {
+    if (!lang) return;
+    fetch(`${API_BASE}/api/lang`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lang })
+    }).catch(() => {});
 }
 
 function t(key, ...args) {
@@ -201,9 +227,36 @@ function getTauriInvoke() {
     return null;
 }
 
+function getTauriEvent() {
+    const tauri = window.__TAURI__;
+    if (tauri && tauri.event && typeof tauri.event.listen === 'function') {
+        return tauri.event;
+    }
+    const internals = window.__TAURI_INTERNALS__;
+    if (internals && internals.event && typeof internals.event.listen === 'function') {
+        return internals.event;
+    }
+    return null;
+}
+
 let trayUpdateAttempts = 0;
 
 function updateTrayMenuLabels() {
+    const payload = {
+        show_label: t('tray_show'),
+        quit_label: t('tray_quit')
+    };
+    const eventApi = getTauriEvent();
+    if (eventApi && typeof eventApi.emit === 'function') {
+        try {
+            const result = eventApi.emit('tray-labels-updated', payload);
+            if (result && typeof result.catch === 'function') {
+                result.catch(() => {});
+            }
+        } catch (error) {
+            console.warn('Failed to emit tray labels:', error);
+        }
+    }
     const invoke = getTauriInvoke();
     if (!invoke) {
         if (trayUpdateAttempts < 5) {
@@ -212,10 +265,7 @@ function updateTrayMenuLabels() {
         }
         return;
     }
-    invoke('update_tray_labels', {
-        show_label: t('tray_show'),
-        quit_label: t('tray_quit')
-    }).then(() => {
+    invoke('update_tray_labels', payload).then(() => {
         trayUpdateAttempts = 0;
     }).catch((err) => {
         console.warn('Failed to update tray menu:', err);
@@ -243,11 +293,28 @@ function applyI18n() {
         }
     });
 
+    // Apply to elements with data-i18n-title attribute
+    document.querySelectorAll('[data-i18n-title]').forEach(el => {
+        const key = el.getAttribute('data-i18n-title');
+        if (i18nData[key]) {
+            el.title = i18nData[key];
+        }
+    });
+
+    // Apply to elements with data-i18n-aria attribute
+    document.querySelectorAll('[data-i18n-aria]').forEach(el => {
+        const key = el.getAttribute('data-i18n-aria');
+        if (i18nData[key]) {
+            el.setAttribute('aria-label', i18nData[key]);
+        }
+    });
+
     // Update document title
     document.title = t('app_title');
     if (attachBtn) {
         attachBtn.title = t('btn_attach', 'Attach File');
     }
+    updateSidebarCollapseTitle();
     updateWelcomeLoadingText();
 
     // Re-render sessions to update default names
@@ -259,6 +326,11 @@ function applyI18n() {
     updateModelSwitcherLabel();
     updateSystemStatus();
     renderDownloadCards(downloadSearchInput ? downloadSearchInput.value : '');
+    const copyLabel = t('btn_copy', 'Copy');
+    document.querySelectorAll('.code-copy-btn').forEach(btn => {
+        btn.textContent = copyLabel;
+        btn.title = copyLabel;
+    });
     updateTrayMenuLabels();
 }
 
@@ -268,6 +340,16 @@ function showToast(message, duration = 2000) {
     setTimeout(() => {
         toast.classList.add('hidden');
     }, duration);
+}
+
+function updateSidebarCollapseTitle() {
+    if (!sidebarCollapseBtn || !sidebar) return;
+    const collapsed = sidebar.classList.contains('collapsed');
+    const key = collapsed ? 'btn_expand_sidebar' : 'btn_collapse_sidebar';
+    const fallback = collapsed ? 'Expand sidebar' : 'Collapse sidebar';
+    const label = i18nData[key] || fallback;
+    sidebarCollapseBtn.title = label;
+    sidebarCollapseBtn.setAttribute('aria-label', label);
 }
 
 function clearUiTimer(el) {
@@ -1210,6 +1292,7 @@ async function init() {
     initNpuPollInterval();
     initAutoLoadSetting();
     initCloseBehavior();
+    currentLang = await resolveInitialLang();
     await loadI18n(currentLang);
     await loadConfig();
     await restoreModelStatus();
@@ -1647,11 +1730,14 @@ function getMessageByIndex(index) {
     return currentMessages[index] || null;
 }
 
-function createActionButton(label, title, onClick) {
+function createActionButton(key, fallback, onClick) {
+    const label = i18nData[key] || fallback || key;
     const btn = document.createElement('button');
     btn.className = 'message-action-btn';
     btn.textContent = label;
-    btn.title = title || label;
+    btn.title = label;
+    btn.setAttribute('data-i18n', key);
+    btn.setAttribute('data-i18n-title', key);
     btn.addEventListener('click', onClick);
     return btn;
 }
@@ -1662,26 +1748,26 @@ function attachMessageActions(container, role, index) {
 
     if (role === 'user') {
         const editBtn = createActionButton(
-            t('btn_edit', 'Edit'),
-            t('btn_edit', 'Edit'),
+            'btn_edit',
+            'Edit',
             () => handleEditMessage(safeIndex)
         );
         const copyBtn = createActionButton(
-            t('btn_copy', 'Copy'),
-            t('btn_copy', 'Copy'),
+            'btn_copy',
+            'Copy',
             () => handleCopyMessage(safeIndex)
         );
         container.appendChild(editBtn);
         container.appendChild(copyBtn);
     } else {
         const copyBtn = createActionButton(
-            t('btn_copy', 'Copy'),
-            t('btn_copy', 'Copy'),
+            'btn_copy',
+            'Copy',
             () => handleCopyMessage(safeIndex)
         );
         const retryBtn = createActionButton(
-            t('btn_retry', 'Retry'),
-            t('btn_retry', 'Retry'),
+            'btn_retry',
+            'Retry',
             () => handleRetryMessage(safeIndex)
         );
         container.appendChild(copyBtn);
@@ -2272,6 +2358,51 @@ function formatAssistantContent(content) {
     return formatContent(content, 'assistant');
 }
 
+function toggleThinkBox(details) {
+    const content = details.querySelector('.think-content');
+    if (!content) return;
+    if (details.dataset.animating === '1') return;
+    details.dataset.animating = '1';
+    const isOpen = details.hasAttribute('open');
+
+    if (isOpen) {
+        content.style.maxHeight = `${content.scrollHeight}px`;
+        content.style.opacity = '1';
+        content.style.transform = 'translateY(0)';
+        requestAnimationFrame(() => {
+            content.style.maxHeight = '0px';
+            content.style.opacity = '0';
+            content.style.transform = 'translateY(-4px)';
+        });
+        const onDone = () => {
+            details.removeAttribute('open');
+            delete details.dataset.animating;
+            content.style.maxHeight = '';
+            content.style.opacity = '';
+            content.style.transform = '';
+        };
+        content.addEventListener('transitionend', onDone, { once: true });
+        return;
+    }
+
+    details.setAttribute('open', '');
+    content.style.maxHeight = '0px';
+    content.style.opacity = '0';
+    content.style.transform = 'translateY(-4px)';
+    requestAnimationFrame(() => {
+        content.style.maxHeight = `${content.scrollHeight}px`;
+        content.style.opacity = '1';
+        content.style.transform = 'translateY(0)';
+    });
+    const onDone = () => {
+        delete details.dataset.animating;
+        content.style.maxHeight = '';
+        content.style.opacity = '';
+        content.style.transform = '';
+    };
+    content.addEventListener('transitionend', onDone, { once: true });
+}
+
 function setAssistantPlaceholder(contentDiv) {
     if (!contentDiv) return;
     const label = escapeHtml(t('msg_thinking', 'Thinking...'));
@@ -2346,6 +2477,7 @@ async function createNewChat() {
 // Toggle sidebar visibility
 function toggleSidebar() {
     sidebar.classList.toggle('collapsed');
+    updateSidebarCollapseTitle();
 }
 
 // Create temporary chat (not saved to history)
@@ -2935,6 +3067,15 @@ function setupEventListeners() {
     }
     if (messagesDiv) {
         messagesDiv.addEventListener('click', (e) => {
+            const summary = e.target.closest('summary');
+            if (summary) {
+                const details = summary.closest('.think-box');
+                if (details && messagesDiv.contains(details)) {
+                    e.preventDefault();
+                    toggleThinkBox(details);
+                    return;
+                }
+            }
             const btn = e.target.closest('.code-copy-btn');
             if (!btn) return;
             e.preventDefault();

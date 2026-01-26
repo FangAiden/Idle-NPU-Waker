@@ -24,6 +24,7 @@
         "url": "about:blank"
       }
     ],
+    "withGlobalTauri": true,
     "security": {
       "csp": null
     }

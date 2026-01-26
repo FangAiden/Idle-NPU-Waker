@@ -1,8 +1,9 @@
-import uuid
 import json
-import os
-import sys
+import uuid
+from pathlib import Path
 from typing import Dict, List, Optional
+
+from app.config import DATA_DIR
 
 class SessionManager:
     def __init__(self):
@@ -10,19 +11,15 @@ class SessionManager:
         self.current_session_id: Optional[str] = None
         self.temp_sessions: Dict[str, dict] = {}  # 临时会话存储
 
-        if getattr(sys, 'frozen', False):
-            base_dir = os.path.dirname(sys.executable)
-        else:
-            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-        self.storage_path = os.path.join(base_dir, "sessions.json")
+        base_dir = Path(DATA_DIR)
+        self.storage_path = base_dir / "sessions.json"
         self._load_sessions()
 
     def _load_sessions(self):
         """从文件加载会话"""
-        if os.path.exists(self.storage_path):
+        if self.storage_path.exists():
             try:
-                with open(self.storage_path, 'r', encoding='utf-8') as f:
+                with self.storage_path.open('r', encoding='utf-8') as f:
                     data = json.load(f)
                     self.sessions = data.get("sessions", {})
                     last_sid = data.get("current_session_id")
@@ -38,7 +35,7 @@ class SessionManager:
             "current_session_id": self.current_session_id
         }
         try:
-            with open(self.storage_path, 'w', encoding='utf-8') as f:
+            with self.storage_path.open('w', encoding='utf-8') as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
         except Exception as e:
             print(f"Failed to save sessions: {e}")

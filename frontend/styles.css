@@ -1339,6 +1339,9 @@ body {
     color: var(--accent-color);
     text-transform: uppercase;
     list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .think-box summary::-webkit-details-marker {
@@ -1350,18 +1353,41 @@ body {
 }
 
 .think-box summary::after {
-    content: "v";
-    float: right;
-    color: var(--text-muted);
+    content: "";
+    margin-left: auto;
+    width: 10px;
+    height: 10px;
+    border-right: 2px solid var(--text-muted);
+    border-bottom: 2px solid var(--text-muted);
+    transform: rotate(45deg);
+    transition: transform 0.15s ease;
 }
 
 .think-box[open] summary::after {
-    content: "^";
+    transform: rotate(-135deg);
 }
 
 .think-content {
     margin-top: 8px;
     color: var(--text-secondary);
+    display: block;
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    pointer-events: none;
+    transform: translateY(-4px);
+    transition: max-height 0.2s ease, opacity 0.2s ease, transform 0.2s ease;
+}
+
+.think-box:not([open]) > .think-content {
+    display: block;
+}
+
+.think-box[open] > .think-content {
+    max-height: 800px;
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
 }
 
 .think-content pre {

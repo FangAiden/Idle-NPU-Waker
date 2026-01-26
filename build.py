@@ -310,6 +310,8 @@ def should_rebuild_tauri(force: bool) -> bool:
         TAURI_DIR / "tauri.conf.json",
         TAURI_DIR / "Cargo.toml",
         TAURI_DIR / "build.rs",
+        TAURI_DIR / "capabilities",
+        TAURI_DIR / "permissions",
         TAURI_BIN_DIR / exe_name,
     ]
     output_mtime = max((p.stat().st_mtime for p in outputs if p.exists()), default=0.0)

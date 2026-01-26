@@ -1,0 +1,26 @@
+# Custom app command permissions.
+
+[[permission]]
+identifier = "allow-update-tray-labels"
+description = "Allows updating tray menu labels."
+commands.allow = ["update_tray_labels"]
+
+[[permission]]
+identifier = "allow-show-main-window-cmd"
+description = "Allows showing the main window."
+commands.allow = ["show_main_window_cmd"]
+
+[[permission]]
+identifier = "allow-hide-main-window"
+description = "Allows hiding the main window."
+commands.allow = ["hide_main_window"]
+
+[[permission]]
+identifier = "allow-hide-tray-menu"
+description = "Allows hiding the tray menu."
+commands.allow = ["hide_tray_menu"]
+
+[[permission]]
+identifier = "allow-exit-app"
+description = "Allows exiting the application."
+commands.allow = ["exit_app"]

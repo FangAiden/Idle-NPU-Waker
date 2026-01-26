@@ -22,7 +22,7 @@
                         </svg>
                         <span data-i18n="btn_new_chat">New Chat</span>
                     </button>
-                    <button class="temp-chat-btn" id="tempChatBtn" type="button" title="Temporary Chat">
+                    <button class="temp-chat-btn" id="tempChatBtn" type="button" title="Temporary Chat" data-i18n-title="temp_chat_tooltip">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                             <line x1="9" y1="10" x2="15" y2="10"></line>
@@ -78,7 +78,7 @@
             <!-- Model Status Bar -->
             <div class="model-bar" id="modelBar">
                 <div class="model-bar-left">
-                    <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" type="button" title="Toggle Sidebar">
+                    <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" type="button" title="Collapse sidebar" data-i18n-title="btn_collapse_sidebar">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                             <line x1="9" y1="3" x2="9" y2="21"></line>
@@ -90,7 +90,7 @@
                     </div>
                 </div>
                 <div class="model-bar-actions">
-                    <button class="perf-toggle-btn" id="performancePanelToggleBtn" type="button" title="Performance Panel">
+                    <button class="perf-toggle-btn" id="performancePanelToggleBtn" type="button" title="Performance Panel" data-i18n-title="btn_perf_panel">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="4" y1="20" x2="4" y2="10"></line>
                             <line x1="10" y1="20" x2="10" y2="6"></line>
@@ -123,14 +123,14 @@
                         <span class="gen-stat-sep">|</span>
                         <span class="gen-stat"><span id="genTime">0</span>s</span>
                     </div>
-                    <button class="panel-close-btn" id="performancePanelCloseBtn" type="button" title="Hide">x</button>
+                    <button class="panel-close-btn" id="performancePanelCloseBtn" type="button" title="Hide" data-i18n-title="btn_hide">x</button>
                 </div>
                 <div class="perf-row perf-middle">
                     <div class="status-pill" id="memoryStatus" data-i18n="status_model_memory">Model Mem</div>
                     <div class="status-pill status-pill-download" id="downloadStatusBadge" data-i18n="status_download">Download</div>
                 </div>
                 <div class="perf-row perf-bottom">
-                    <button class="npu-monitor-btn" id="npuMonitorBtn" title="NPU Monitor">
+                    <button class="npu-monitor-btn" id="npuMonitorBtn" title="NPU Monitor" data-i18n-title="npu_monitor_title">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
                         </svg>
@@ -163,7 +163,7 @@
                 <div class="messages" id="messages"></div>
             </div>
 
-            <button class="scroll-bottom-btn" id="scrollBottomBtn" type="button" title="Back to bottom" aria-label="Back to bottom">
+            <button class="scroll-bottom-btn" id="scrollBottomBtn" type="button" title="Back to bottom" aria-label="Back to bottom" data-i18n-title="btn_scroll_bottom" data-i18n-aria="btn_scroll_bottom">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <line x1="12" y1="5" x2="12" y2="19"></line>
                     <polyline points="6 13 12 19 18 13"></polyline>
@@ -184,19 +184,19 @@
                         rows="1"
                         disabled
                     ></textarea>
-                    <button class="attach-btn" id="attachBtn" title="Attach">
+                    <button class="attach-btn" id="attachBtn" title="Attach" data-i18n-title="btn_attach">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <path d="M21 12.5V8a5 5 0 0 0-10 0v9a3 3 0 0 0 6 0V9"></path>
                             <path d="M16 12v5a4 4 0 0 1-8 0V7a6 6 0 0 1 12 0v5"></path>
                         </svg>
                     </button>
-                    <button class="send-btn" id="sendBtn" disabled title="Send">
+                    <button class="send-btn" id="sendBtn" disabled title="Send" data-i18n-title="btn_send">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="22" y1="2" x2="11" y2="13"></line>
                             <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
                         </svg>
                     </button>
-                    <button class="stop-btn hidden" id="stopBtn" title="Stop">
+                    <button class="stop-btn hidden" id="stopBtn" title="Stop" data-i18n-title="btn_stop">
                         <svg viewBox="0 0 24 24" fill="currentColor">
                             <rect x="6" y="6" width="12" height="12" rx="2"></rect>
                         </svg>

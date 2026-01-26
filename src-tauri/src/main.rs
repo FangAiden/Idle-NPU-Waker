@@ -12,7 +12,8 @@ use std::time::{Duration, Instant};
 use serde::Serialize;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{
-    Emitter, Manager, PhysicalPosition, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent,
+    Emitter, Manager, PhysicalPosition, RunEvent, Url, WebviewUrl, WebviewWindowBuilder,
+    WindowEvent,
 };
 use tauri_plugin_shell::{process::CommandChild, ShellExt};
 
@@ -131,7 +132,12 @@ fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 }
 
 fn tray_menu_url() -> WebviewUrl {
-    WebviewUrl::App("tray.html".into())
+    let (host, port) = backend_host_port();
+    let url = format!("http://{host}:{port}/tray.html");
+    match Url::parse(&url) {
+        Ok(parsed) => WebviewUrl::External(parsed),
+        Err(_) => WebviewUrl::App("tray.html".into()),
+    }
 }
 
 fn emit_tray_labels<R: tauri::Runtime>(
