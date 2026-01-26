@@ -48,13 +48,22 @@ class DownloadService:
             if self._running:
                 raise RuntimeError("Download already running")
 
-            cmd = [
-                sys.executable,
-                self._script_path,
-                repo_id,
-                self._cache_dir,
-                self._models_dir,
-            ]
+            if getattr(sys, "frozen", False):
+                cmd = [
+                    sys.executable,
+                    "--download-script",
+                    repo_id,
+                    self._cache_dir,
+                    self._models_dir,
+                ]
+            else:
+                cmd = [
+                    sys.executable,
+                    self._script_path,
+                    repo_id,
+                    self._cache_dir,
+                    self._models_dir,
+                ]
             self._process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
