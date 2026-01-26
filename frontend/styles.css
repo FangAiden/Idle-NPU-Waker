@@ -1831,6 +1831,25 @@ body {
     background-color: var(--bg-hover);
 }
 
+.local-model-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+}
+
+.local-model-actions .refresh-btn {
+    margin-top: 0;
+}
+
+.danger-btn {
+    border-color: rgba(239, 68, 68, 0.5);
+    color: var(--error-color);
+}
+
+.danger-btn:hover {
+    background-color: rgba(239, 68, 68, 0.12);
+}
+
 /* Buttons */
 .primary-btn {
     width: 100%;

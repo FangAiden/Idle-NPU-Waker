@@ -225,6 +225,32 @@ class LLMService:
     def stop(self) -> None:
         self._stop_event.set()
 
+    def unload_model(self) -> None:
+        with self._lock:
+            if self._active_generation:
+                raise RuntimeError("Generation in progress")
+            self._active_generation = False
+            self._generation_queue = None
+            self._generation_done.clear()
+            self._model_loaded = False
+            self._model_path = None
+            self._device = None
+            self._loading = False
+            self._load_stage = ""
+            self._load_message = ""
+            self._load_started_at = None
+
+        if self._process and self._process.is_alive():
+            try:
+                self._cmd_queue.put(None)
+                self._process.join(timeout=1)
+            finally:
+                if self._process.is_alive():
+                    self._process.terminate()
+                    self._process.join(timeout=1)
+        self._process = None
+        self._stop_event.set()
+
     def shutdown(self) -> None:
         with self._lock:
             self._active_generation = False

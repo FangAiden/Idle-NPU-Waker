@@ -1,6 +1,7 @@
 import json
 import os
 import queue
+import shutil
 import sys
 import threading
 import time
@@ -85,6 +86,10 @@ class ModelLoadRequest(BaseModel):
     path: str
     device: str = "AUTO"
     max_prompt_len: int = 16384
+
+
+class ModelDeleteRequest(BaseModel):
+    path: str = Field(..., min_length=1)
 
 
 class FileAttachment(BaseModel):
@@ -256,6 +261,38 @@ def api_models_load(req: ModelLoadRequest):
 @app.get("/api/models/status")
 def api_models_status():
     return llm_service.get_status()
+
+
+@app.post("/api/models/delete")
+def api_models_delete(req: ModelDeleteRequest):
+    target = Path(req.path).resolve()
+    models_root = MODELS_DIR.resolve()
+    try:
+        target.relative_to(models_root)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid model path")
+    if target == models_root:
+        raise HTTPException(status_code=400, detail="Refuse to delete models root")
+    if not target.exists():
+        return {"ok": True, "removed": False}
+    if not target.is_dir():
+        raise HTTPException(status_code=400, detail="Invalid model path")
+
+    status = llm_service.get_status()
+    loaded_path = status.get("path") if isinstance(status, dict) else ""
+    if status.get("loaded") and loaded_path:
+        if Path(str(loaded_path)).resolve() == target:
+            try:
+                llm_service.unload_model()
+            except RuntimeError as exc:
+                raise HTTPException(status_code=409, detail=str(exc))
+
+    try:
+        shutil.rmtree(target)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Delete failed: {exc}")
+
+    return {"ok": True, "removed": True}
 
 
 @app.get("/api/sessions")
@@ -591,6 +628,22 @@ def tray_menu():
     if not tray_path.exists():
         raise HTTPException(status_code=404, detail="Tray menu not built")
     return FileResponse(tray_path, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/tray.css")
+def tray_menu_css():
+    css_path = FRONTEND_DIR / "tray.css"
+    if not css_path.exists():
+        raise HTTPException(status_code=404, detail="Tray stylesheet not built")
+    return FileResponse(css_path, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/tray.js")
+def tray_menu_js():
+    js_path = FRONTEND_DIR / "tray.js"
+    if not js_path.exists():
+        raise HTTPException(status_code=404, detail="Tray script not built")
+    return FileResponse(js_path, headers={"Cache-Control": "no-store"})
 
 class NoCacheStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):

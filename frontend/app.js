@@ -116,6 +116,7 @@ const closeConfirmModal = document.getElementById('closeConfirmModal');
 const closeConfirmCloseBtn = document.getElementById('closeConfirmCloseBtn');
 const closeToTrayBtn = document.getElementById('closeToTrayBtn');
 const closeExitBtn = document.getElementById('closeExitBtn');
+const deleteModelBtn = document.getElementById('deleteModelBtn');
 
 // Language Elements
 const langBtn = document.getElementById('langBtn');
@@ -504,6 +505,9 @@ async function updateSystemStatus() {
         updateModelMemoryStatus(data.model, data.app);
         updateWelcomeAppMemory(data.app, data.model);
         updateDownloadStatusBadge(data.download);
+        if (data.model && !data.model.loaded && !data.model.loading && modelLoaded) {
+            markModelUnloaded();
+        }
     } catch (error) {
         // Ignore polling errors
     }
@@ -532,6 +536,23 @@ function updateModelSwitcherLabel() {
     } else {
         modelSwitcherName.textContent = t('model_switcher_select', 'Select model');
     }
+}
+
+function markModelUnloaded() {
+    modelLoaded = false;
+    loadedModelConfig = {
+        path: '',
+        device: 'AUTO',
+        maxPromptLen: maxPromptLenInput ? parseInt(maxPromptLenInput.value) : 16384
+    };
+    statusDot.className = 'status-dot';
+    modelStatus.textContent = t('status_no_model', 'No model loaded');
+    messageInput.disabled = true;
+    sendBtn.disabled = true;
+    updateWelcomeOverlay();
+    setModelReloadRequired(false);
+    updateModelSwitcherLabel();
+    renderModelSwitcherList();
 }
 
 function renderModelSwitcherList() {
@@ -1378,8 +1399,47 @@ async function loadLocalModels() {
             await updateSupportedSettingsForPath(welcomeLocalModelSelect.value);
         }
         updateReloadRequirement();
+        if (deleteModelBtn && localModelSelect) {
+            deleteModelBtn.disabled = !localModelSelect.value;
+        }
     } catch (error) {
         console.error('Failed to load local models:', error);
+    }
+}
+
+async function deleteLocalModel() {
+    const modelPath = localModelSelect ? localModelSelect.value : '';
+    if (!modelPath) {
+        showToast(t('opt_select_model'));
+        return;
+    }
+    const modelName = getModelDisplayName(modelPath);
+    const confirmMsg = t('dialog_delete_model_body', `Delete model "${modelName}"?`);
+    if (!window.confirm(confirmMsg)) return;
+
+    if (deleteModelBtn) deleteModelBtn.disabled = true;
+    try {
+        const response = await fetch(`${API_BASE}/api/models/delete`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: modelPath })
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || t('dialog_delete_model_failed', 'Delete failed'));
+        }
+        if (loadedModelConfig.path === modelPath) {
+            markModelUnloaded();
+        }
+        await loadLocalModels();
+        if (localModelSelect) localModelSelect.value = '';
+        showToast(t('dialog_delete_model_done', 'Model deleted'));
+    } catch (error) {
+        showToast(`${t('dialog_delete_model_failed', 'Delete failed')}: ${error.message}`);
+    } finally {
+        if (deleteModelBtn) {
+            deleteModelBtn.disabled = !localModelSelect || !localModelSelect.value;
+        }
     }
 }
 
@@ -2962,6 +3022,9 @@ function setupEventListeners() {
     // Load model
     loadModelConfirmBtn.addEventListener('click', loadModel);
     refreshModelsBtn.addEventListener('click', loadLocalModels);
+    if (deleteModelBtn) {
+        deleteModelBtn.addEventListener('click', deleteLocalModel);
+    }
     if (cancelDownloadBtn) {
         cancelDownloadBtn.addEventListener('click', cancelDownload);
     }
@@ -2969,6 +3032,9 @@ function setupEventListeners() {
     localModelSelect.addEventListener('change', () => {
         updateSupportedSettingsForPath(localModelSelect.value);
         updateReloadRequirement();
+        if (deleteModelBtn) {
+            deleteModelBtn.disabled = !localModelSelect.value;
+        }
     });
 
     if (deviceSelect) {

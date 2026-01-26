@@ -279,7 +279,10 @@
                             <select id="localModelSelect">
                                 <option value="" data-i18n="opt_select_model">-- Select a model --</option>
                             </select>
-                            <button class="refresh-btn" id="refreshModelsBtn" data-i18n="btn_refresh">Refresh</button>
+                            <div class="local-model-actions">
+                                <button class="refresh-btn" id="refreshModelsBtn" data-i18n="btn_refresh">Refresh</button>
+                                <button class="refresh-btn danger-btn" id="deleteModelBtn" data-i18n="btn_delete_model">Delete</button>
+                            </div>
                         </div>
                         <div class="setting-group">
                             <label data-i18n="label_device">Device</label>
