@@ -583,6 +583,15 @@ def index():
         raise HTTPException(status_code=404, detail="Frontend not built")
     return FileResponse(index_path, headers={"Cache-Control": "no-store"})
 
+
+@app.get("/tray")
+@app.get("/tray.html")
+def tray_menu():
+    tray_path = FRONTEND_DIR / "tray.html"
+    if not tray_path.exists():
+        raise HTTPException(status_code=404, detail="Tray menu not built")
+    return FileResponse(tray_path, headers={"Cache-Control": "no-store"})
+
 class NoCacheStaticFiles(StaticFiles):
     async def get_response(self, path: str, scope):
         response = await super().get_response(path, scope)

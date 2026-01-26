@@ -26,11 +26,14 @@ let loadedModelConfig = { path: '', device: 'AUTO', maxPromptLen: 16384 };
 let modelReloadRequired = false;
 const LAST_MODEL_KEY = 'last_model_config';
 const USER_CONFIG_KEY = 'user_config';
+const MAX_PROMPT_LEN_KEY = 'max_prompt_len_pref';
 const UI_TRANSITION_MS = 180;
 const NPU_POLL_INTERVAL_KEY = 'npu_poll_interval_ms';
 const DEFAULT_NPU_POLL_MS = 1000;
 const AUTO_LOAD_MODEL_KEY = 'auto_load_model';
 const DEFAULT_AUTO_LOAD_MODEL = false;
+const CLOSE_BEHAVIOR_KEY = 'close_behavior';
+const DEFAULT_CLOSE_BEHAVIOR = 'ask';
 let systemStatusInterval = null;
 let autoScrollEnabled = true;
 const SCROLL_BOTTOM_THRESHOLD = 80;
@@ -41,7 +44,7 @@ let currentLang = localStorage.getItem('lang') || 'en_US';
 let i18nData = {};
 const LANG_LABELS = {
     'en_US': 'English',
-    'zh_CN': '简体中文'
+    'zh_CN': '\u7b80\u4f53\u4e2d\u6587'
 };
 
 // DOM Elements
@@ -107,6 +110,12 @@ const downloadCards = document.getElementById('downloadCards');
 const downloadCardsEmpty = document.getElementById('downloadCardsEmpty');
 const downloadSearchInput = document.getElementById('downloadSearchInput');
 const downloadCollectionLink = document.getElementById('downloadCollectionLink');
+
+const closeBehaviorSelect = document.getElementById('closeBehaviorSelect');
+const closeConfirmModal = document.getElementById('closeConfirmModal');
+const closeConfirmCloseBtn = document.getElementById('closeConfirmCloseBtn');
+const closeToTrayBtn = document.getElementById('closeToTrayBtn');
+const closeExitBtn = document.getElementById('closeExitBtn');
 
 // Language Elements
 const langBtn = document.getElementById('langBtn');
@@ -176,16 +185,43 @@ function t(key, ...args) {
     return text;
 }
 
-function updateTrayMenuLabels() {
+function getTauriInvoke() {
     const tauri = window.__TAURI__;
-    if (!tauri || !tauri.core || typeof tauri.core.invoke !== 'function') {
+    if (tauri && tauri.core && typeof tauri.core.invoke === 'function') {
+        return tauri.core.invoke.bind(tauri.core);
+    }
+    if (tauri && typeof tauri.invoke === 'function') {
+        return tauri.invoke.bind(tauri);
+    }
+    const internals = window.__TAURI_INTERNALS__;
+    if (internals && typeof internals.invoke === 'function') {
+        return internals.invoke.bind(internals);
+    }
+    return null;
+}
+
+let trayUpdateAttempts = 0;
+
+function updateTrayMenuLabels() {
+    const invoke = getTauriInvoke();
+    if (!invoke) {
+        if (trayUpdateAttempts < 5) {
+            trayUpdateAttempts += 1;
+            setTimeout(updateTrayMenuLabels, 500);
+        }
         return;
     }
-    tauri.core.invoke('update_tray_labels', {
+    invoke('update_tray_labels', {
         show_label: t('tray_show'),
         quit_label: t('tray_quit')
+    }).then(() => {
+        trayUpdateAttempts = 0;
     }).catch((err) => {
         console.warn('Failed to update tray menu:', err);
+        if (trayUpdateAttempts < 5) {
+            trayUpdateAttempts += 1;
+            setTimeout(updateTrayMenuLabels, 500);
+        }
     });
 }
 
@@ -281,6 +317,41 @@ function saveLastModelConfig(path, device, maxPromptLen) {
         ts: Date.now()
     };
     localStorage.setItem(LAST_MODEL_KEY, JSON.stringify(payload));
+}
+
+function getPreferredMaxPromptLen() {
+    const raw = localStorage.getItem(MAX_PROMPT_LEN_KEY);
+    const value = parseInt(raw, 10);
+    return Number.isFinite(value) ? value : null;
+}
+
+function normalizeMaxPromptLen(value) {
+    const min = welcomeMaxPromptLenInput
+        ? parseInt(welcomeMaxPromptLenInput.min, 10)
+        : (maxPromptLenInput ? parseInt(maxPromptLenInput.min, 10) : 1024);
+    const max = welcomeMaxPromptLenInput
+        ? parseInt(welcomeMaxPromptLenInput.max, 10)
+        : (maxPromptLenInput ? parseInt(maxPromptLenInput.max, 10) : 32768);
+    const parsed = parseInt(value, 10);
+    if (!Number.isFinite(parsed)) return null;
+    return clamp(parsed, Number.isFinite(min) ? min : 1024, Number.isFinite(max) ? max : 32768);
+}
+
+function applyMaxPromptLen(value, persist = false) {
+    const normalized = normalizeMaxPromptLen(value);
+    if (normalized === null) return;
+    if (maxPromptLenInput && maxPromptLenValue) {
+        maxPromptLenInput.value = normalized;
+        maxPromptLenValue.textContent = normalized;
+    }
+    if (welcomeMaxPromptLenInput && welcomeMaxPromptLenValue) {
+        welcomeMaxPromptLenInput.value = normalized;
+        welcomeMaxPromptLenValue.textContent = normalized;
+    }
+    if (persist) {
+        localStorage.setItem(MAX_PROMPT_LEN_KEY, String(normalized));
+    }
+    updateReloadRequirement();
 }
 
 function setModelReloadRequired(required) {
@@ -708,6 +779,84 @@ function initAutoLoadSetting() {
     setAutoLoadEnabled(getAutoLoadEnabled(), false);
 }
 
+function getCloseBehavior() {
+    const raw = localStorage.getItem(CLOSE_BEHAVIOR_KEY);
+    if (raw === 'background' || raw === 'exit' || raw === 'ask') {
+        return raw;
+    }
+    return DEFAULT_CLOSE_BEHAVIOR;
+}
+
+function setCloseBehavior(value, persist = true) {
+    const next = value === 'background' || value === 'exit' || value === 'ask'
+        ? value
+        : DEFAULT_CLOSE_BEHAVIOR;
+    if (closeBehaviorSelect) {
+        closeBehaviorSelect.value = next;
+    }
+    if (persist) {
+        localStorage.setItem(CLOSE_BEHAVIOR_KEY, next);
+    }
+}
+
+function initCloseBehavior() {
+    setCloseBehavior(getCloseBehavior(), false);
+}
+
+function openCloseConfirmModal() {
+    if (!closeConfirmModal) return;
+    showAnimated(closeConfirmModal);
+}
+
+function closeCloseConfirmModal() {
+    if (!closeConfirmModal) return;
+    hideAnimated(closeConfirmModal);
+}
+
+function requestCloseToTray() {
+    updateTrayMenuLabels();
+    const invoke = getTauriInvoke();
+    if (!invoke) return;
+    invoke('hide_main_window').catch((err) => {
+        console.warn('Failed to hide window:', err);
+    });
+}
+
+function requestExitApp() {
+    const invoke = getTauriInvoke();
+    if (!invoke) return;
+    invoke('exit_app').catch((err) => {
+        console.warn('Failed to exit app:', err);
+    });
+}
+
+function handleCloseChoice(choice) {
+    setCloseBehavior(choice);
+    closeCloseConfirmModal();
+    if (choice === 'background') {
+        requestCloseToTray();
+    } else {
+        requestExitApp();
+    }
+}
+
+function handleCloseRequest() {
+    const behavior = getCloseBehavior();
+    if (behavior === 'background') {
+        requestCloseToTray();
+        return;
+    }
+    if (behavior === 'exit') {
+        requestExitApp();
+        return;
+    }
+    openCloseConfirmModal();
+}
+
+window.__idleNpuCloseRequested = () => {
+    handleCloseRequest();
+};
+
 function normalizeDownloadModels(models) {
     const items = Array.isArray(models) ? models : [];
     return items.map((item) => {
@@ -976,6 +1125,7 @@ function applyLoadedModel(path, device, maxPromptLen) {
     };
     modelLoaded = true;
     saveLastModelConfig(safePath, safeDevice, safeMaxPromptLen);
+    localStorage.setItem(MAX_PROMPT_LEN_KEY, String(safeMaxPromptLen));
 
     if (localModelSelect) localModelSelect.value = safePath;
     if (welcomeLocalModelSelect) welcomeLocalModelSelect.value = safePath;
@@ -1038,6 +1188,7 @@ document.addEventListener('DOMContentLoaded', init);
 async function init() {
     initNpuPollInterval();
     initAutoLoadSetting();
+    initCloseBehavior();
     await loadI18n(currentLang);
     await loadConfig();
     await restoreModelStatus();
@@ -1048,6 +1199,12 @@ async function init() {
     setupEventListeners();
     setupSettingsListeners();
     setupLangSwitcher();
+    document.addEventListener('visibilitychange', () => {
+        if (!document.hidden) {
+            updateTrayMenuLabels();
+        }
+    });
+    window.addEventListener('focus', () => updateTrayMenuLabels());
     cacheSettingGroups();
     initWelcomeOverlay();
     initPerformancePanel();
@@ -1104,7 +1261,7 @@ function initWelcomeOverlay() {
     }
     if (welcomeMaxPromptLenInput && welcomeMaxPromptLenValue) {
         welcomeMaxPromptLenInput.addEventListener('input', () => {
-            welcomeMaxPromptLenValue.textContent = welcomeMaxPromptLenInput.value;
+            applyMaxPromptLen(welcomeMaxPromptLenInput.value, true);
         });
     }
     if (welcomeLoadBtn) {
@@ -1173,13 +1330,15 @@ async function loadConfig() {
         });
 
         // Set default values
-        if (config) {
-            applyConfigToInputs(config);
-            if (welcomeMaxPromptLenInput && welcomeMaxPromptLenValue) {
-                welcomeMaxPromptLenInput.value = config.max_prompt_len || maxPromptLenInput.value;
-                welcomeMaxPromptLenValue.textContent = welcomeMaxPromptLenInput.value;
-            }
-        }
+    if (config) {
+        applyConfigToInputs(config);
+    }
+    const preferredMaxPromptLen = getPreferredMaxPromptLen();
+    if (preferredMaxPromptLen !== null) {
+        applyMaxPromptLen(preferredMaxPromptLen);
+    } else if (config && config.max_prompt_len) {
+        applyMaxPromptLen(config.max_prompt_len);
+    }
         await loadLocalModels();
     } catch (error) {
         console.error('Failed to load config:', error);
@@ -2734,6 +2893,22 @@ function setupEventListeners() {
         if (e.target === settingsModal) closeSettingsModal();
     });
 
+    // Close confirmation modal (Tauri only)
+    if (closeConfirmCloseBtn) {
+        closeConfirmCloseBtn.addEventListener('click', closeCloseConfirmModal);
+    }
+    if (closeConfirmModal) {
+        closeConfirmModal.addEventListener('click', (e) => {
+            if (e.target === closeConfirmModal) closeCloseConfirmModal();
+        });
+    }
+    if (closeToTrayBtn) {
+        closeToTrayBtn.addEventListener('click', () => handleCloseChoice('background'));
+    }
+    if (closeExitBtn) {
+        closeExitBtn.addEventListener('click', () => handleCloseChoice('exit'));
+    }
+
     // Download modal
     if (openDownloadBtn) {
         openDownloadBtn.addEventListener('click', openDownloadModal);
@@ -2879,8 +3054,7 @@ function setupSettingsListeners() {
     });
 
     maxPromptLenInput.addEventListener('input', () => {
-        maxPromptLenValue.textContent = maxPromptLenInput.value;
-        updateReloadRequirement();
+        applyMaxPromptLen(maxPromptLenInput.value, true);
     });
 
     if (npuPollIntervalInput && npuPollIntervalValue) {
@@ -2891,6 +3065,11 @@ function setupSettingsListeners() {
     if (autoLoadModelToggle) {
         autoLoadModelToggle.addEventListener('change', () => {
             setAutoLoadEnabled(autoLoadModelToggle.checked);
+        });
+    }
+    if (closeBehaviorSelect) {
+        closeBehaviorSelect.addEventListener('change', () => {
+            setCloseBehavior(closeBehaviorSelect.value);
         });
     }
 

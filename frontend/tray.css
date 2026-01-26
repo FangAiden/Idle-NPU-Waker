@@ -1,0 +1,74 @@
+:root {
+    color-scheme: dark;
+    --tray-bg: #1c1d21;
+    --tray-text: #f5f7fb;
+    --tray-subtle: #a9acb5;
+    --tray-hover: #26272d;
+    --tray-active: #2f3138;
+    --tray-danger: #ff6b6b;
+    --tray-border: #2a2c33;
+    font-family: "Segoe UI Variable", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    background: transparent;
+}
+
+body {
+    margin: 0;
+    background: transparent;
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+}
+
+.tray-shell {
+    width: 100%;
+    height: 100%;
+    padding: 8px;
+    border-radius: 12px;
+    background: var(--tray-bg);
+    border: 1px solid var(--tray-border);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    overflow: hidden;
+}
+
+.tray-item {
+    width: 100%;
+    margin: 0;
+    padding: 8px 12px;
+    border-radius: 10px;
+    border: none;
+    background: transparent;
+    color: var(--tray-text);
+    font-size: 13px;
+    text-align: left;
+    cursor: pointer;
+    transition: background 140ms ease;
+}
+
+.tray-item:hover {
+    background: var(--tray-hover);
+}
+
+.tray-item:active {
+    background: var(--tray-active);
+}
+
+.tray-item.danger {
+    color: var(--tray-danger);
+}
+
+.tray-item.danger:hover {
+    background: #3b2023;
+}

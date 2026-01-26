@@ -1725,6 +1725,22 @@ body {
         visibility 0s linear var(--ui-transition);
 }
 
+.tab-content::-webkit-scrollbar {
+    width: 8px;
+}
+
+.tab-content::-webkit-scrollbar-thumb {
+    background-color: transparent;
+}
+
+.tab-content:hover::-webkit-scrollbar-thumb {
+    background-color: var(--border-color);
+}
+
+.tab-content:hover::-webkit-scrollbar-thumb:hover {
+    background-color: var(--text-muted);
+}
+
 .tab-content.active {
     opacity: 1;
     pointer-events: auto;
@@ -1864,6 +1880,13 @@ body {
 
 .modal-actions .primary-btn {
     flex: 1;
+}
+
+.close-confirm-text {
+    margin-bottom: 8px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.4;
 }
 
 /* Download Progress */

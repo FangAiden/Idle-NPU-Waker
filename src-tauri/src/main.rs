@@ -9,17 +9,29 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
-use tauri::menu::MenuBuilder;
+use serde::Serialize;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::{Manager, RunEvent, WindowEvent};
+use tauri::{
+    Emitter, Manager, PhysicalPosition, RunEvent, WebviewUrl, WebviewWindowBuilder, WindowEvent,
+};
 use tauri_plugin_shell::{process::CommandChild, ShellExt};
 
-const TRAY_MENU_SHOW: &str = "tray-show";
-const TRAY_MENU_QUIT: &str = "tray-quit";
 const TRAY_ID: &str = "main";
+const TRAY_WINDOW_LABEL: &str = "tray-menu";
+const TRAY_MENU_WIDTH: f64 = 210.0;
+const TRAY_MENU_HEIGHT: f64 = 100.0;
 
 struct BackendState(Mutex<Option<CommandChild>>);
 struct ExitState(AtomicBool);
+struct TrayLabels(Mutex<(String, String)>);
+struct TrayShowState(Mutex<Option<Instant>>);
+
+#[derive(Serialize, Clone)]
+struct TrayLabelsPayload {
+    show_label: String,
+    quit_label: String,
+}
+
 
 impl ExitState {
     fn request_exit(&self) {
@@ -104,11 +116,114 @@ fn spawn_backend<R: tauri::Runtime>(
     Ok(child)
 }
 
+fn configure_webview_logging() {
+    if std::env::var_os("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").is_none() {
+        std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-logging --log-level=3");
+    }
+}
+
 fn show_main_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
     if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
     }
+}
+
+fn tray_menu_url() -> WebviewUrl {
+    WebviewUrl::App("tray.html".into())
+}
+
+fn emit_tray_labels<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    show_label: &str,
+    quit_label: &str,
+) {
+    if let Ok(mut guard) = app.state::<TrayLabels>().0.lock() {
+        *guard = (show_label.to_string(), quit_label.to_string());
+    }
+    if let Some(window) = app.get_webview_window(TRAY_WINDOW_LABEL) {
+        let payload = TrayLabelsPayload {
+            show_label: show_label.to_string(),
+            quit_label: quit_label.to_string(),
+        };
+        let _ = window.emit("tray-labels-updated", payload);
+    }
+}
+
+fn ensure_tray_window<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> Result<tauri::WebviewWindow<R>, Box<dyn std::error::Error>> {
+    if let Some(window) = app.get_webview_window(TRAY_WINDOW_LABEL) {
+        return Ok(window);
+    }
+    let url = tray_menu_url();
+    let window = WebviewWindowBuilder::new(app, TRAY_WINDOW_LABEL, url)
+        .title("Tray Menu")
+        .inner_size(TRAY_MENU_WIDTH, TRAY_MENU_HEIGHT)
+        .resizable(false)
+        .fullscreen(false)
+        .visible(false)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .build()?;
+    Ok(window)
+}
+
+fn show_tray_menu<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    position: PhysicalPosition<f64>,
+) {
+    if let Ok(mut guard) = app.state::<TrayShowState>().0.lock() {
+        *guard = Some(Instant::now());
+    }
+    let window = match ensure_tray_window(app) {
+        Ok(window) => window,
+        Err(_) => return,
+    };
+    if let Ok(guard) = app.state::<TrayLabels>().0.lock() {
+        let payload = TrayLabelsPayload {
+            show_label: guard.0.clone(),
+            quit_label: guard.1.clone(),
+        };
+        let _ = window.emit("tray-labels-updated", payload);
+    }
+    let width = TRAY_MENU_WIDTH as i32;
+    let height = TRAY_MENU_HEIGHT as i32;
+    let mut x = position.x as i32 - width / 2;
+    let mut y = position.y as i32 - height - 8;
+    if x < 0 {
+        x = 0;
+    }
+    if y < 0 {
+        y = 0;
+    }
+    let _ = window.set_position(PhysicalPosition::new(x, y));
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
+fn hide_tray_menu_window<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if let Ok(mut guard) = app.state::<TrayShowState>().0.lock() {
+        *guard = None;
+    }
+    if let Some(window) = app.get_webview_window(TRAY_WINDOW_LABEL) {
+        let _ = window.hide();
+    }
+}
+
+fn emit_close_prompt<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> bool {
+    if let Some(webview) = app.get_webview_window("main") {
+        return webview
+            .eval(
+                "if (!window.__idleNpuCloseRequested) { throw new Error('close handler missing'); } window.__idleNpuCloseRequested();",
+            )
+            .is_ok();
+    }
+    false
 }
 
 fn shutdown_backend<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
@@ -128,10 +243,9 @@ fn shutdown_backend<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
 }
 
 fn init_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), Box<dyn std::error::Error>> {
-    let menu = build_tray_menu(app, "Show", "Quit")?;
+    emit_tray_labels(app, "Show", "Quit");
 
     let mut tray = TrayIconBuilder::with_id(TRAY_ID)
-        .menu(&menu)
         .tooltip("Idle NPU Waker")
         .show_menu_on_left_click(false);
 
@@ -140,60 +254,34 @@ fn init_tray<R: tauri::Runtime>(app: &tauri::AppHandle<R>) -> Result<(), Box<dyn
     }
 
     tray
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            TRAY_MENU_SHOW => {
-                show_main_window(app);
-            }
-            TRAY_MENU_QUIT => {
-                let exit_state = app.state::<ExitState>();
-                exit_state.request_exit();
-                shutdown_backend(app);
-                app.exit(0);
-            }
-            _ => {}
-        })
         .on_tray_icon_event(|tray, event| match event {
             TrayIconEvent::Click {
                 button: MouseButton::Left,
                 button_state: MouseButtonState::Up,
                 ..
             } => {
+                hide_tray_menu_window(tray.app_handle());
                 show_main_window(tray.app_handle());
             }
             TrayIconEvent::DoubleClick {
                 button: MouseButton::Left,
                 ..
             } => {
+                hide_tray_menu_window(tray.app_handle());
                 show_main_window(tray.app_handle());
+            }
+            TrayIconEvent::Click {
+                button: MouseButton::Right,
+                button_state: MouseButtonState::Up,
+                position,
+                ..
+            } => {
+                show_tray_menu(tray.app_handle(), position);
             }
             _ => {}
         })
         .build(app)?;
 
-    Ok(())
-}
-
-fn build_tray_menu<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
-    show_label: &str,
-    quit_label: &str,
-) -> tauri::Result<tauri::menu::Menu<R>> {
-    MenuBuilder::new(app)
-        .text(TRAY_MENU_SHOW, show_label)
-        .separator()
-        .text(TRAY_MENU_QUIT, quit_label)
-        .build()
-}
-
-fn update_tray_menu<R: tauri::Runtime>(
-    app: &tauri::AppHandle<R>,
-    show_label: &str,
-    quit_label: &str,
-) -> tauri::Result<()> {
-    let menu = build_tray_menu(app, show_label, quit_label)?;
-    if let Some(tray) = app.tray_by_id(TRAY_ID) {
-        tray.set_menu(Some(menu))?;
-    }
     Ok(())
 }
 
@@ -203,15 +291,57 @@ fn update_tray_labels(
     show_label: String,
     quit_label: String,
 ) -> Result<(), String> {
-    update_tray_menu(&app, &show_label, &quit_label).map_err(|err| err.to_string())
+    emit_tray_labels(&app, &show_label, &quit_label);
+    Ok(())
+}
+
+#[tauri::command]
+fn show_main_window_cmd(app: tauri::AppHandle) -> Result<(), String> {
+    show_main_window(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn hide_main_window(app: tauri::AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window.hide().map_err(|err| err.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn hide_tray_menu(app: tauri::AppHandle) -> Result<(), String> {
+    hide_tray_menu_window(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn exit_app(app: tauri::AppHandle) -> Result<(), String> {
+    let exit_state = app.state::<ExitState>();
+    exit_state.request_exit();
+    shutdown_backend(&app);
+    app.exit(0);
+    Ok(())
 }
 
 fn main() {
+    configure_webview_logging();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(BackendState(Mutex::new(None)))
         .manage(ExitState(AtomicBool::new(false)))
-        .invoke_handler(tauri::generate_handler![update_tray_labels])
+        .manage(TrayLabels(Mutex::new((
+            "Show".to_string(),
+            "Quit".to_string(),
+        ))))
+        .manage(TrayShowState(Mutex::new(None)))
+        .invoke_handler(tauri::generate_handler![
+            update_tray_labels,
+            show_main_window_cmd,
+            hide_main_window,
+            hide_tray_menu,
+            exit_app
+        ])
         .setup(|app| {
             let host = std::env::var("IDLE_NPU_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());
             let port: u16 = std::env::var("IDLE_NPU_PORT")
@@ -237,15 +367,23 @@ fn main() {
             let mut guard = state.0.lock().unwrap();
             *guard = child;
 
-            let window = app
-                .get_webview_window("main")
-                .expect("main window missing");
             let url_clone = url.clone();
             let wait_host = ui_host.clone();
+            let app_handle = app.handle().clone();
+            let tray_handle = app_handle.clone();
             std::thread::spawn(move || {
                 wait_for_port(&wait_host, port, Duration::from_secs(20));
-                let _ = window.eval(&format!("window.location.replace('{url_clone}')"));
-                show_main_window(window.app_handle());
+                let tray_handle_for_window = tray_handle.clone();
+                let _ = tray_handle.run_on_main_thread(move || {
+                    let _ = ensure_tray_window(&tray_handle_for_window);
+                });
+                let app_handle_for_window = app_handle.clone();
+                let _ = app_handle.run_on_main_thread(move || {
+                    if let Some(window) = app_handle_for_window.get_webview_window("main") {
+                        let _ = window.eval(&format!("window.location.replace('{url_clone}')"));
+                    }
+                    show_main_window(&app_handle_for_window);
+                });
             });
 
             init_tray(&app.handle())?;
@@ -253,14 +391,41 @@ fn main() {
             Ok(())
         })
         .on_window_event(|window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                let exit_state = window.app_handle().state::<ExitState>();
-                if exit_state.is_exit_requested() {
-                    shutdown_backend(window.app_handle());
-                    return;
+            match event {
+                WindowEvent::Focused(false) => {
+                    if window.label() != TRAY_WINDOW_LABEL {
+                        return;
+                    }
+                    let app_handle = window.app_handle();
+                    let should_hide = match app_handle.state::<TrayShowState>().0.lock() {
+                        Ok(guard) => guard
+                            .as_ref()
+                            .map(|instant| instant.elapsed() >= Duration::from_millis(200))
+                            .unwrap_or(true),
+                        Err(_) => true,
+                    };
+                    if should_hide {
+                        hide_tray_menu_window(app_handle);
+                    }
                 }
-                api.prevent_close();
-                let _ = window.hide();
+                WindowEvent::CloseRequested { api, .. } => {
+                    if window.label() != "main" {
+                        return;
+                    }
+                    let app_handle = window.app_handle();
+                    let exit_state = app_handle.state::<ExitState>();
+                    if exit_state.is_exit_requested() {
+                        shutdown_backend(app_handle);
+                        return;
+                    }
+                    api.prevent_close();
+                    if !emit_close_prompt(app_handle) {
+                        exit_state.request_exit();
+                        shutdown_backend(app_handle);
+                        app_handle.exit(0);
+                    }
+                }
+                _ => {}
             }
         })
         .build(tauri::generate_context!())

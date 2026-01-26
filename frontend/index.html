@@ -266,6 +266,14 @@
                                 <span data-i18n="conf_auto_load_model">Auto-load last model on startup</span>
                             </label>
                         </div>
+                        <div class="setting-group">
+                            <label data-i18n="conf_close_behavior">Close Behavior</label>
+                            <select id="closeBehaviorSelect">
+                                <option value="ask" data-i18n="conf_close_behavior_ask">Ask every time</option>
+                                <option value="background" data-i18n="conf_close_behavior_background">Run in background</option>
+                                <option value="exit" data-i18n="conf_close_behavior_exit">Exit app</option>
+                            </select>
+                        </div>
                         <div class="setting-group" id="localModelGroup">
                             <label data-i18n="label_model">Local Model</label>
                             <select id="localModelSelect">
@@ -393,6 +401,23 @@
                     </div>
                     <span id="downloadStatus" data-i18n="status_downloading">Downloading...</span>
                     <button class="cancel-btn" id="cancelDownloadBtn" type="button" data-i18n="btn_cancel">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Close Confirm Modal -->
+    <div class="modal-overlay hidden ui-modal" id="closeConfirmModal">
+        <div class="modal small-modal">
+            <div class="modal-header">
+                <h2 data-i18n="dialog_close_title">Close App</h2>
+                <button class="close-btn" id="closeConfirmCloseBtn">&times;</button>
+            </div>
+            <div class="modal-content">
+                <p class="close-confirm-text" data-i18n="dialog_close_body">Keep running in background or exit?</p>
+                <div class="modal-actions">
+                    <button class="secondary-btn" id="closeToTrayBtn" data-i18n="dialog_close_background">Run in background</button>
+                    <button class="primary-btn" id="closeExitBtn" data-i18n="dialog_close_exit">Exit</button>
                 </div>
             </div>
         </div>

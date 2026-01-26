@@ -1,6 +1,5 @@
 {
     "app_title": "Idle NPU Waker",
-
     "btn_new_chat": "+ New Chat",
     "group_download": "Download Model (ModelScope)",
     "download_catalog_title": "NPU Optimized Models",
@@ -39,11 +38,14 @@
     "load_stage_ready": "Model ready",
     "load_stage_error": "Load failed",
     "status_no_model": "No model loaded",
-
     "group_run": "Runtime Settings",
     "label_device": "Device",
     "label_model": "Local Model",
     "conf_auto_load_model": "Auto-load last model on startup",
+    "conf_close_behavior": "Close Behavior",
+    "conf_close_behavior_ask": "Ask every time",
+    "conf_close_behavior_background": "Run in background",
+    "conf_close_behavior_exit": "Exit app",
     "label_model_source": "Model Source",
     "label_preset_model": "Preset Model",
     "label_download_model": "Model ID",
@@ -55,13 +57,10 @@
     "btn_open_download": "Download Models",
     "conf_max_prompt_len": "Max Context Length",
     "conf_npu_poll_interval": "NPU Poll Interval",
-
     "opt_local_models": "Local Models",
     "opt_preset_models": "Preset Models",
     "opt_select_model": "-- Select a model --",
-
     "tab_model": "Model",
-
     "input_placeholder": "Type a message (Enter to send)...",
     "btn_send": "Send",
     "btn_stop": "Stop",
@@ -70,19 +69,15 @@
     "btn_edit": "Edit",
     "btn_retry": "Retry",
     "default_chat_name": "New Chat",
-
     "msg_thinking": "Thinking...",
     "think_status_running": "Deep Thinking...",
     "think_status_done": "Thinking Process",
     "think_cost_pattern": "({0:.1f}s elapsed)",
     "think_duration_pattern": "({0:.1f}s)",
-
     "tip_load_model_first": "Please load a model first",
     "tip_start_chatting": "Start chatting to begin",
     "tip_first_load_slow": "First load may take a while.",
-
     "menu_delete_chat": "Delete Chat",
-
     "dialog_confirm_delete": "Confirm Delete",
     "dialog_delete_msg": "Are you sure you want to delete chat \"{0}\"?",
     "dialog_confirm_clear": "Confirm Clear",
@@ -95,10 +90,8 @@
     "dialog_loaded_title": "Ready",
     "dialog_loaded_msg": "Model loaded successfully ({0})",
     "dialog_error": "Error",
-
     "crash_title": "Application Crash",
     "crash_message": "An unhandled exception occurred. See crash.log for details.\n\n{0}",
-
     "dl_task_running": "Download task is running...",
     "dl_init_process": "Initializing download process...",
     "dl_paused": "Paused",
@@ -108,50 +101,45 @@
     "dl_error_reason": "\nPossible reasons: Missing dependencies (modelscope) or network failure.",
     "label_stats": "Last Generation:",
     "stats_pattern": "{0} tokens · {1:.1f} t/s · {2:.1f} s",
-
     "group_model_params": "Model Parameters",
     "btn_settings": "Settings",
     "btn_back_chat": "Back to Chat",
-
     "grp_generation": "Generation",
     "grp_context": "Context",
     "grp_advanced": "Advanced Settings",
-
     "conf_max_tokens": "Max Tokens",
     "conf_temp": "Temperature",
     "conf_top_p": "Top-P",
     "conf_top_k": "Top-K",
     "conf_rep_penalty": "Repetition Penalty",
     "conf_do_sample": "Enable Sampling",
-
     "conf_history_turns": "History Turns",
     "conf_sys_prompt": "System Prompt",
-
     "conf_add_gen_prompt": "Add Generation Prompt",
     "conf_enable_thinking": "Enable Deep Thinking",
     "conf_skip_special": "Skip Special Tokens",
-
     "opt_enabled": "Enabled",
     "msg_already_loaded": "Already Loaded",
-
     "msg_copied": "Copied successfully",
     "msg_file_attached": "Attached: {0}",
     "msg_file_too_large": "File truncated: {0}",
     "msg_file_read_failed": "Failed to read file: {0}",
     "msg_file_skipped_binary": "Skipped binary file: {0}",
-
     "menu_rename_chat": "Rename",
     "dialog_rename_title": "Rename Chat",
     "dialog_rename_msg": "Enter new chat name",
+    "dialog_close_title": "Close App",
+    "dialog_close_body": "Choose what to do when closing the window.",
+    "dialog_close_remember": "Remember my choice",
+    "dialog_close_background": "Run in background",
+    "dialog_close_exit": "Exit",
     "label_attachments": "Attachments",
     "btn_remove": "Remove",
-
     "npu_monitor_title": "NPU Monitor",
     "npu_utilization": "Utilization",
     "npu_monitor_active": "Monitoring active",
     "npu_monitor_searching": "Searching...",
     "npu_monitor_unavailable": "NPU monitoring not available on this system",
-
     "btn_temp_chat": "Temp Chat",
     "temp_chat_name": "Temporary Chat",
     "temp_chat_tooltip": "Temporary chats are not saved to history",

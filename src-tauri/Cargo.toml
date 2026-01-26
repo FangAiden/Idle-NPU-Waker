@@ -1,6 +1,6 @@
 [package]
 name = "idle-npu-waker"
-version = "0.1.0"
+version = "1.0.1"
 description = "Idle NPU Waker"
 authors = ["Idle NPU Waker"]
 license = "GPL-3.0"
@@ -10,5 +10,6 @@ edition = "2021"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-shell = { version = "2", features = [] }
