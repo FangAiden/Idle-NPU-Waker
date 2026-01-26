@@ -65,22 +65,57 @@ class NPUMonitor:
             return default
 
     def _run_powershell(self, command: str, timeout: int = 10) -> subprocess.CompletedProcess:
-        return subprocess.run(
-            ["powershell", "-Command", command],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            creationflags=subprocess.CREATE_NO_WINDOW
-        )
+        args = [
+            "powershell",
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            command,
+        ]
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        try:
+            return subprocess.run(
+                args,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                creationflags=creationflags,
+            )
+        except subprocess.TimeoutExpired as exc:
+            stdout = exc.stdout or ""
+            stderr = exc.stderr or ""
+            if isinstance(stdout, bytes):
+                stdout = stdout.decode("utf-8", errors="ignore")
+            if isinstance(stderr, bytes):
+                stderr = stderr.decode("utf-8", errors="ignore")
+            return subprocess.CompletedProcess(args=args, returncode=124, stdout=stdout, stderr=stderr)
+        except FileNotFoundError as exc:
+            return subprocess.CompletedProcess(args=args, returncode=127, stdout="", stderr=str(exc))
 
     def _run_cmd(self, command: str, timeout: int = 10) -> subprocess.CompletedProcess:
-        return subprocess.run(
-            ["cmd", "/c", command],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            creationflags=subprocess.CREATE_NO_WINDOW
-        )
+        args = ["cmd", "/c", command]
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        try:
+            return subprocess.run(
+                args,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+                creationflags=creationflags,
+            )
+        except subprocess.TimeoutExpired as exc:
+            stdout = exc.stdout or ""
+            stderr = exc.stderr or ""
+            if isinstance(stdout, bytes):
+                stdout = stdout.decode("utf-8", errors="ignore")
+            if isinstance(stderr, bytes):
+                stderr = stderr.decode("utf-8", errors="ignore")
+            return subprocess.CompletedProcess(args=args, returncode=124, stdout=stdout, stderr=stderr)
+        except FileNotFoundError as exc:
+            return subprocess.CompletedProcess(args=args, returncode=127, stdout="", stderr=str(exc))
 
     def _read_typeperf_counter(self, path: str, timeout: int = 6) -> Optional[float]:
         result = self._run_powershell(f'typeperf "{path}" -sc 1', timeout=timeout)

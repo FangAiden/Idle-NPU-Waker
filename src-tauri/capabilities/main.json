@@ -4,6 +4,7 @@
   "windows": ["main", "tray-menu"],
   "permissions": [
     "core:default",
+    "shell:default",
     "allow-update-tray-labels",
     "allow-show-main-window-cmd",
     "allow-hide-main-window",
@@ -11,6 +12,6 @@
     "allow-exit-app"
   ],
   "remote": {
-    "urls": ["http://127.0.0.1:8000/*", "http://localhost:8000/*"]
+    "urls": ["http://127.0.0.1:*/*", "http://localhost:*/*"]
   }
 }
