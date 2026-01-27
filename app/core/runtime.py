@@ -87,6 +87,7 @@ class RuntimeState:
         self.tokenizer: Optional[Any] = None
         self.pipe: Optional[Any] = None
         self.model_path: Optional[Path] = None
+        self.model_kind: str = "llm"
         self._ov_genai: Optional[Any] = None
 
     def _get_ov_genai(self):
@@ -108,6 +109,7 @@ class RuntimeState:
             
         self.pipe = None
         self.tokenizer = None
+        self.model_kind = "llm"
         
         gc.collect()
         gc.collect()
@@ -128,7 +130,7 @@ class RuntimeState:
         device: Optional[str] = None,
         max_prompt_len: int = 16384,
         progress_cb: Optional[Callable[[str, str], None]] = None,
-    ) -> Tuple[str, str]:
+    ) -> Tuple[str, str, str]:
 
         want_source = model_source or self.model_source
         want_id     = model_id or self.model_id
@@ -148,7 +150,7 @@ class RuntimeState:
         
         if not need_reload and self.pipe:
             log_to_file("Pipeline reusing existing instance.")
-            return (str(self.model_path), self.device)
+            return (str(self.model_path), self.device, self.model_kind)
 
         self.unload()
 
@@ -158,6 +160,12 @@ class RuntimeState:
             raise RuntimeError(f"只支持 local 模式")
 
         str_path = str(model_path)
+        try:
+            from app.utils.model_type import detect_model_kind
+            model_kind = detect_model_kind(model_path)
+        except Exception:
+            model_kind = "llm"
+        log_to_file(f"Detected model type: {model_kind}")
         log_to_file(f"Initializing Tokenizer from {str_path}...")
         if progress_cb:
             progress_cb("tokenizer", "Initializing tokenizer")
@@ -174,19 +182,34 @@ class RuntimeState:
         if device_props:
             log_to_file(f"Device properties: {device_props}")
 
-        log_to_file(f"Initializing LLMPipeline on {dev}...")
+        pipeline_name = "VLMPipeline" if model_kind == "vlm" else "LLMPipeline"
+        log_to_file(f"Initializing {pipeline_name} on {dev}...")
         if progress_cb:
             progress_cb("pipeline", f"Initializing pipeline on {dev}")
         try:
-            # NPU needs MAX_PROMPT_LEN for longer conversations
-            if dev == "NPU" or (dev == "AUTO" and "NPU" in AVAILABLE_DEVICES):
-                pipe = ov_genai.LLMPipeline(
-                    str_path, device=dev, MAX_PROMPT_LEN=max_prompt_len, **device_props
-                )
-                log_to_file(f"LLMPipeline created with MAX_PROMPT_LEN={max_prompt_len}")
+            if model_kind == "vlm":
+                try:
+                    if dev == "NPU" or (dev == "AUTO" and "NPU" in AVAILABLE_DEVICES):
+                        pipe = ov_genai.VLMPipeline(
+                            str_path, device=dev, MAX_PROMPT_LEN=max_prompt_len, **device_props
+                        )
+                        log_to_file(f"VLMPipeline created with MAX_PROMPT_LEN={max_prompt_len}")
+                    else:
+                        pipe = ov_genai.VLMPipeline(str_path, device=dev, **device_props)
+                        log_to_file("VLMPipeline created successfully.")
+                except TypeError:
+                    pipe = ov_genai.VLMPipeline(str_path, device=dev, **device_props)
+                    log_to_file("VLMPipeline created successfully.")
             else:
-                pipe = ov_genai.LLMPipeline(str_path, device=dev, **device_props)
-                log_to_file("LLMPipeline created successfully.")
+                # NPU needs MAX_PROMPT_LEN for longer conversations
+                if dev == "NPU" or (dev == "AUTO" and "NPU" in AVAILABLE_DEVICES):
+                    pipe = ov_genai.LLMPipeline(
+                        str_path, device=dev, MAX_PROMPT_LEN=max_prompt_len, **device_props
+                    )
+                    log_to_file(f"LLMPipeline created with MAX_PROMPT_LEN={max_prompt_len}")
+                else:
+                    pipe = ov_genai.LLMPipeline(str_path, device=dev, **device_props)
+                    log_to_file("LLMPipeline created successfully.")
         except Exception as e:
             log_to_file(f"ERROR: Pipeline init failed on {dev}: {e}")
             log_to_file("Attempting fallback to CPU...")
@@ -194,7 +217,10 @@ class RuntimeState:
             if progress_cb:
                 progress_cb("fallback", "Falling back to CPU")
             device_props = _build_device_props(dev, model_path)
-            pipe = ov_genai.LLMPipeline(str_path, device=dev, **device_props)
+            if model_kind == "vlm":
+                pipe = ov_genai.VLMPipeline(str_path, device=dev, **device_props)
+            else:
+                pipe = ov_genai.LLMPipeline(str_path, device=dev, **device_props)
             log_to_file("Fallback to CPU successful.")
 
         self.model_source = want_source
@@ -202,10 +228,11 @@ class RuntimeState:
         self.model_dir = str(model_path)
         self.device = dev
         self.model_path = model_path
+        self.model_kind = model_kind
         self.tokenizer = tok
         self.pipe = pipe
 
         if progress_cb:
             progress_cb("ready", "Model ready")
         
-        return (str(self.model_path), self.device)
+        return (str(self.model_path), self.device, self.model_kind)

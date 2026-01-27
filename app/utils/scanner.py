@@ -1,4 +1,5 @@
 from pathlib import Path
+from app.utils.model_type import detect_model_kind
 from typing import List, Optional
 
 TOKENIZER_PATTERNS = ["tokenizer*.json", "vocab.json", "merges.txt", "*.model", "special_tokens_map.json"]
@@ -53,7 +54,8 @@ def scan_dirs(roots: List[Path], max_depth: int = 4):
                     
                     if key not in seen and _has_any(model_root, TOKENIZER_PATTERNS, recursive=False):
                         seen.add(key)
-                        found.append({"name": model_root.name, "path": key})
+                        kind = detect_model_kind(model_root)
+                        found.append({"name": model_root.name, "path": key, "kind": kind})
                 
                 walk(d, depth + 1)
         except PermissionError:

@@ -1,6 +1,57 @@
 import time
 import traceback
 
+import base64
+import io
+
+def _decode_image_data(data_url: str):
+    if not data_url:
+        return None
+    raw = None
+    if data_url.startswith("data:"):
+        try:
+            _, b64 = data_url.split(",", 1)
+        except ValueError:
+            return None
+        try:
+            raw = base64.b64decode(b64, validate=False)
+        except Exception:
+            return None
+    else:
+        try:
+            raw = base64.b64decode(data_url, validate=False)
+        except Exception:
+            return None
+    if raw is None:
+        return None
+    try:
+        from PIL import Image
+        import numpy as np
+        import openvino as ov
+        image = Image.open(io.BytesIO(raw)).convert("RGB")
+        array = np.array(image)
+        return ov.Tensor(array)
+    except Exception:
+        return None
+
+def _extract_vlm_images(messages):
+    last_user = None
+    for msg in reversed(messages):
+        if msg.get("role") == "user":
+            last_user = msg
+            break
+    if not last_user:
+        return []
+    attachments = last_user.get("attachments") or []
+    images = []
+    for att in attachments:
+        if (att.get("kind") or "").lower() != "image":
+            continue
+        tensor = _decode_image_data(str(att.get("content", "")))
+        if tensor is not None:
+            images.append(tensor)
+    return images
+
 from app.config import DEFAULT_CONFIG
 from app.utils.config_loader import resolve_supported_setting_keys
 
@@ -38,10 +89,10 @@ def llm_process_entry(cmd_queue, res_queue, stop_event):
                         res_queue.put({"type": "load_stage", "stage": stage, "message": message})
 
                     res_queue.put({"type": "load_stage", "stage": "start", "message": "Starting"})
-                    _, final_dev = runtime.ensure_loaded(
+                    _, final_dev, model_kind = runtime.ensure_loaded(
                         src, mid, path, dev, max_prompt_len, progress_cb=progress
                     )
-                    res_queue.put({"type": "loaded", "mid": mid, "dev": final_dev})
+                    res_queue.put({"type": "loaded", "mid": mid, "dev": final_dev, "kind": model_kind})
                 except Exception as e:
                     res_queue.put({"type": "error", "msg": f"Load Error: {str(e)}"})
 
@@ -107,7 +158,14 @@ def llm_process_entry(cmd_queue, res_queue, stop_event):
                     gen_cfg = ov_genai.GenerationConfig(**gen_params)
                     streamer = ov_genai.TextStreamer(runtime.tokenizer, streamer_cb)
 
-                    runtime.pipe.generate(prompt, generation_config=gen_cfg, streamer=streamer)
+                    if runtime.model_kind == "vlm":
+                        images = _extract_vlm_images(messages)
+                        if images:
+                            runtime.pipe.generate(prompt, images=images, generation_config=gen_cfg, streamer=streamer)
+                        else:
+                            runtime.pipe.generate(prompt, generation_config=gen_cfg, streamer=streamer)
+                    else:
+                        runtime.pipe.generate(prompt, generation_config=gen_cfg, streamer=streamer)
                 except Exception as e:
                     res_queue.put({"type": "error", "msg": f"Gen Error: {str(e)}"})
                 finally:

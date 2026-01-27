@@ -32,6 +32,7 @@ from app.config import (
     DOWNLOAD_CACHE_DIR,
     DATA_DIR,
     MAX_FILE_BYTES,
+    MAX_IMAGE_BYTES,
 )
 from app.core.runtime import AVAILABLE_DEVICES
 from app.core.session import SessionManager
@@ -97,6 +98,8 @@ class FileAttachment(BaseModel):
     name: str = Field(..., min_length=1)
     content: str
     truncated: Optional[bool] = None
+    kind: Optional[str] = None
+    mime: Optional[str] = None
 
 
 class ChatStreamRequest(BaseModel):
@@ -136,13 +139,41 @@ def _sanitize_attachments(attachments: Optional[List[FileAttachment]]) -> List[D
         data = item.model_dump() if isinstance(item, BaseModel) else dict(item)
         name = str(data.get("name", "")).strip()
         content = str(data.get("content", ""))
+        kind = str(data.get("kind", "") or "").strip().lower()
+        mime = str(data.get("mime", "") or "").strip().lower()
         if not name or not content:
+            continue
+        if not kind:
+            if mime.startswith("image/") or content.startswith("data:image/"):
+                kind = "image"
+            else:
+                kind = "text"
+        truncated = False
+        if kind == "image":
+            data_url = content
+            if not data_url.startswith("data:"):
+                continue
+            try:
+                header, b64 = data_url.split(",", 1)
+            except ValueError:
+                continue
+            if "base64" not in header:
+                continue
+            try:
+                import base64
+                raw = base64.b64decode(b64, validate=False)
+            except Exception:
+                continue
+            if len(raw) > MAX_IMAGE_BYTES:
+                truncated = True
+                continue
+            safe.append({"name": name[:200], "content": data_url, "truncated": truncated, "kind": "image", "mime": mime})
             continue
         encoded = content.encode("utf-8", errors="ignore")
         truncated = len(encoded) > MAX_FILE_BYTES
         if truncated:
             content = encoded[:MAX_FILE_BYTES].decode("utf-8", errors="ignore")
-        safe.append({"name": name[:200], "content": content, "truncated": truncated})
+        safe.append({"name": name[:200], "content": content, "truncated": truncated, "kind": "text", "mime": mime})
     return safe
 
 
@@ -151,6 +182,8 @@ def _format_attachments(attachments: List[Dict[str, Any]]) -> str:
         return ""
     lines = ["[Attachments]"]
     for item in attachments:
+        if (item.get("kind") or "").lower() == "image":
+            continue
         name = str(item.get("name", ""))
         content = str(item.get("content", ""))
         if not content:
@@ -168,7 +201,10 @@ def _merge_message_attachments(message: Dict[str, Any]) -> Dict[str, Any]:
         block = _format_attachments(attachments)
         if block:
             content = f"{content}\n\n{block}" if content else block
-    return {"role": message.get("role", "user"), "content": content}
+    merged = {"role": message.get("role", "user"), "content": content}
+    if attachments:
+        merged["attachments"] = attachments
+    return merged
 
 
 def _build_messages(history, config: Dict[str, Any]):
@@ -208,6 +244,7 @@ def api_config():
         "available_devices": AVAILABLE_DEVICES,
         "models_dir": str(MODELS_DIR),
         "max_file_bytes": MAX_FILE_BYTES,
+        "max_image_bytes": MAX_IMAGE_BYTES,
     }
 
 
@@ -289,12 +326,12 @@ def api_models_config(path: str = Query(..., min_length=1)):
 @app.post("/api/models/load")
 def api_models_load(req: ModelLoadRequest):
     try:
-        model_path, device = llm_service.load_model(
+        model_path, device, kind = llm_service.load_model(
             req.source, req.model_id, req.path, req.device, req.max_prompt_len
         )
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-    return {"path": model_path, "device": device}
+    return {"path": model_path, "device": device, "kind": kind}
 
 
 @app.get("/api/models/status")

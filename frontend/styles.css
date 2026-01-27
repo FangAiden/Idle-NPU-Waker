@@ -1131,6 +1131,34 @@ body {
     line-height: 1.6;
 }
 
+.message-attachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.message-attachment {
+    max-width: 240px;
+}
+
+.message-attachment-image {
+    display: block;
+    width: 100%;
+    height: auto;
+    max-height: 240px;
+    object-fit: cover;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-secondary);
+    cursor: zoom-in;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.message-attachment-image:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+}
+
 .assistant-placeholder {
     display: inline-flex;
     align-items: center;
@@ -1696,6 +1724,67 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+}
+
+.image-preview-modal .modal {
+    background: transparent;
+    width: auto;
+    max-width: 92vw;
+    max-height: 92vh;
+    overflow: visible;
+}
+
+.image-preview-card {
+    background-color: var(--bg-secondary);
+    border-radius: 16px;
+    border: 1px solid var(--border-color);
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.image-preview-image {
+    max-width: 88vw;
+    max-height: 78vh;
+    width: auto;
+    height: auto;
+    object-fit: contain;
+    border-radius: 0;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-primary);
+}
+
+.image-preview-caption {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+    max-width: 80vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.image-preview-close {
+    align-self: flex-end;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    background-color: rgba(0, 0, 0, 0.6);
+    color: #fff;
+    font-size: 20px;
+    line-height: 1;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 6px;
+}
+
+.image-preview-close:hover {
+    background-color: rgba(0, 0, 0, 0.8);
 }
 
 .settings-tab-body {

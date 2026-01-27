@@ -46,6 +46,7 @@ class LLMService:
         self._model_loaded = False
         self._model_path: Optional[str] = None
         self._device: Optional[str] = None
+        self._model_kind: Optional[str] = None
 
     def _start_process_if_needed(self) -> None:
         if self._process is None or not self._process.is_alive():
@@ -75,6 +76,7 @@ class LLMService:
                 _log("Load complete")
                 with self._lock:
                     self._device = msg.get("dev")
+                    self._model_kind = msg.get("kind") or self._model_kind
                     self._load_result = {"ok": True, "dev": self._device or "AUTO"}
                     self._loading = False
                     self._load_stage = "ready"
@@ -117,7 +119,7 @@ class LLMService:
 
     def load_model(
         self, source: str, model_id: str, model_dir: str, device: str, max_prompt_len: int = 16384
-    ) -> Tuple[str, str]:
+    ) -> Tuple[str, str, str]:
         with self._lock:
             if self._active_generation:
                 raise RuntimeError("Generation in progress")
@@ -172,7 +174,7 @@ class LLMService:
             raise RuntimeError(error_msg)
 
         self._model_loaded = True
-        return (self._model_path or "", self._device or "AUTO")
+        return (self._model_path or "", self._device or "AUTO", self._model_kind or "llm")
 
     def get_status(self) -> Dict[str, object]:
         with self._lock:
@@ -181,6 +183,7 @@ class LLMService:
             pid = self._process.pid if process_alive and self._process else None
             path = self._model_path or ""
             device = self._device or "AUTO"
+            kind = self._model_kind or "llm"
             loading = self._loading
             load_stage = self._load_stage
             load_message = self._load_message
@@ -190,6 +193,7 @@ class LLMService:
             "loaded": loaded,
             "path": path,
             "device": device,
+            "kind": kind,
             "pid": pid or 0,
             "memory": memory,
             "loading": loading,
@@ -235,6 +239,7 @@ class LLMService:
             self._model_loaded = False
             self._model_path = None
             self._device = None
+            self._model_kind = None
             self._loading = False
             self._load_stage = ""
             self._load_message = ""

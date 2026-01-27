@@ -15,6 +15,7 @@ let supportedSettingKeys = null;
 let settingGroups = null;
 let pendingAttachments = [];
 let maxFileBytes = 512 * 1024;
+let maxImageBytes = 5 * 1024 * 1024;
 let markdownReady = false;
 let mermaidReady = false;
 let codeHighlightReady = false;
@@ -23,7 +24,7 @@ let editingIndex = null;
 let downloadRunning = false;
 let downloadAbortController = null;
 let downloadCancelled = false;
-let loadedModelConfig = { path: '', device: 'AUTO', maxPromptLen: 16384 };
+let loadedModelConfig = { path: '', device: 'AUTO', maxPromptLen: 16384, kind: '' };
 let modelReloadRequired = false;
 const LAST_MODEL_KEY = 'last_model_config';
 const USER_CONFIG_KEY = 'user_config';
@@ -88,6 +89,10 @@ const renameInput = document.getElementById('renameInput');
 const closeRenameBtn = document.getElementById('closeRenameBtn');
 const cancelRenameBtn = document.getElementById('cancelRenameBtn');
 const confirmRenameBtn = document.getElementById('confirmRenameBtn');
+const imagePreviewModal = document.getElementById('imagePreviewModal');
+const imagePreviewImage = document.getElementById('imagePreviewImage');
+const imagePreviewCaption = document.getElementById('imagePreviewCaption');
+const imagePreviewClose = document.getElementById('imagePreviewClose');
 const toast = document.getElementById('toast');
 const appContainer = document.getElementById('appContainer');
 const welcomeOverlay = document.getElementById('welcomeOverlay');
@@ -604,18 +609,44 @@ function initSystemStatus() {
     systemStatusInterval = setInterval(updateSystemStatus, 2000);
 }
 
-function getModelDisplayName(path) {
+function getModelKindLabel(kind) {
+    const normalized = (kind || '').toLowerCase();
+    if (normalized === 'vlm') return 'VLM';
+    if (normalized === 'llm') return 'LLM';
+    return '';
+}
+
+function formatModelLabel(name, kind) {
+    const label = getModelKindLabel(kind);
+    return label ? `${name} (${label})` : name;
+}
+
+function getModelDisplayName(path, includeKind = false) {
     if (!path) return t('model_switcher_select', 'Select model');
     const match = localModels.find(model => model.path === path);
-    if (match && match.name) return match.name;
-    const parts = path.split(/[/\\\\]/);
-    return parts[parts.length - 1] || path;
+    const baseName = match && match.name
+        ? match.name
+        : (() => {
+            const parts = path.split(/[/\\\\]/);
+            return parts[parts.length - 1] || path;
+        })();
+    if (!includeKind) return baseName;
+    const resolvedKind = match && match.kind
+        ? match.kind
+        : (loadedModelConfig && loadedModelConfig.path === path ? loadedModelConfig.kind : '');
+    return formatModelLabel(baseName, resolvedKind);
+}
+
+function getModelKindForPath(path) {
+    if (!path) return '';
+    const match = localModels.find(model => model.path === path);
+    return match && match.kind ? match.kind : '';
 }
 
 function updateModelSwitcherLabel() {
     if (!modelSwitcherName) return;
     if (modelLoaded && loadedModelConfig.path) {
-        modelSwitcherName.textContent = getModelDisplayName(loadedModelConfig.path);
+        modelSwitcherName.textContent = getModelDisplayName(loadedModelConfig.path, true);
     } else {
         modelSwitcherName.textContent = t('model_switcher_select', 'Select model');
     }
@@ -626,7 +657,8 @@ function markModelUnloaded() {
     loadedModelConfig = {
         path: '',
         device: 'AUTO',
-        maxPromptLen: maxPromptLenInput ? parseInt(maxPromptLenInput.value) : 16384
+        maxPromptLen: maxPromptLenInput ? parseInt(maxPromptLenInput.value) : 16384,
+        kind: ''
     };
     statusDot.className = 'status-dot';
     modelStatus.textContent = t('status_no_model', 'No model loaded');
@@ -653,7 +685,7 @@ function renderModelSwitcherList() {
         const item = document.createElement('button');
         item.type = 'button';
         item.className = 'model-switcher-item';
-        item.textContent = model.name;
+        item.textContent = formatModelLabel(model.name || model.path, model.kind);
         item.dataset.path = model.path;
         if (loadedModelConfig.path && model.path === loadedModelConfig.path) {
             item.classList.add('active');
@@ -719,7 +751,7 @@ async function loadModelFromDropdown(modelPath) {
         }
 
         const data = await response.json();
-        applyLoadedModel(modelPath, data.device, maxPromptLen);
+        applyLoadedModel(modelPath, data.device, maxPromptLen, data.kind);
         showToast(t('dialog_loaded_msg', data.device));
     } catch (error) {
         statusDot.className = 'status-dot';
@@ -1171,6 +1203,116 @@ function buildUserDisplayText(text, attachments) {
     return text ? `${text}\n\n${note}` : note;
 }
 
+function getImageAttachments(attachments) {
+    if (!Array.isArray(attachments) || attachments.length === 0) return [];
+    return attachments.filter(att => {
+        if (!att || typeof att.content !== 'string') return false;
+        const kind = (att.kind || '').toLowerCase();
+        if (kind && kind !== 'image') return false;
+        return att.content.startsWith('data:image/');
+    });
+}
+
+function renderMessageAttachments(messageDiv, attachments) {
+    if (!messageDiv) return;
+    const existing = messageDiv.querySelector('.message-attachments');
+    if (existing) existing.remove();
+
+    const images = getImageAttachments(attachments);
+    if (images.length === 0) return;
+
+    const wrap = document.createElement('div');
+    wrap.className = 'message-attachments';
+    images.forEach(att => {
+        const item = document.createElement('div');
+        item.className = 'message-attachment';
+
+        const img = document.createElement('img');
+        img.className = 'message-attachment-image';
+        img.alt = att.name || 'image';
+        img.title = att.name || '';
+        img.loading = 'lazy';
+        img.decoding = 'async';
+        img.src = att.content;
+        img.tabIndex = 0;
+        img.setAttribute('role', 'button');
+        img.addEventListener('click', () => openImagePreview(att.content, att.name));
+        img.addEventListener('keydown', (event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                openImagePreview(att.content, att.name);
+            }
+        });
+
+        item.appendChild(img);
+        wrap.appendChild(item);
+    });
+
+    const body = messageDiv.querySelector('.message-body');
+    const actions = messageDiv.querySelector('.message-actions');
+    if (body) {
+        if (actions && actions.parentElement === body) {
+            body.insertBefore(wrap, actions);
+        } else {
+            body.appendChild(wrap);
+        }
+    }
+}
+
+function isImagePreviewOpen() {
+    return imagePreviewModal && imagePreviewModal.classList.contains('ui-open');
+}
+
+function openImagePreview(src, name) {
+    if (!imagePreviewModal || !imagePreviewImage) return;
+    imagePreviewImage.src = src || '';
+    imagePreviewImage.alt = name || 'image';
+    if (imagePreviewCaption) {
+        if (name) {
+            imagePreviewCaption.textContent = name;
+            imagePreviewCaption.classList.remove('hidden');
+        } else {
+            imagePreviewCaption.textContent = '';
+            imagePreviewCaption.classList.add('hidden');
+        }
+    }
+    showAnimated(imagePreviewModal);
+}
+
+function closeImagePreview() {
+    if (!imagePreviewModal) return;
+    hideAnimated(imagePreviewModal);
+    if (imagePreviewImage) {
+        imagePreviewImage.src = '';
+    }
+    if (imagePreviewCaption) {
+        imagePreviewCaption.textContent = '';
+    }
+}
+
+function isImageFile(file) {
+    if (file && file.type && file.type.startsWith('image/')) return true;
+    if (!file || !file.name) return false;
+    return /\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(file.name);
+}
+
+function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+            if (typeof reader.result === 'string') {
+                resolve(reader.result);
+            } else {
+                reject(new Error('Invalid file data'));
+            }
+        };
+        reader.onerror = () => {
+            reject(reader.error || new Error('File read failed'));
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
 async function handleFileSelection() {
     const files = Array.from(fileInput.files || []);
     fileInput.value = '';
@@ -1178,6 +1320,24 @@ async function handleFileSelection() {
 
     for (const file of files) {
         try {
+            if (isImageFile(file)) {
+                const limit = maxImageBytes || 5 * 1024 * 1024;
+                if (file.size > limit) {
+                    showToast(t('msg_file_too_large', file.name));
+                    continue;
+                }
+                const content = await readFileAsDataUrl(file);
+                pendingAttachments.push({
+                    name: file.name,
+                    content,
+                    truncated: false,
+                    kind: 'image',
+                    mime: file.type || ''
+                });
+                showToast(t('msg_file_attached', file.name));
+                continue;
+            }
+
             const limit = maxFileBytes || 512 * 1024;
             const truncated = file.size > limit;
             const blob = truncated ? file.slice(0, limit) : file;
@@ -1185,7 +1345,9 @@ async function handleFileSelection() {
             pendingAttachments.push({
                 name: file.name,
                 content,
-                truncated
+                truncated,
+                kind: 'text',
+                mime: file.type || ''
             });
             if (truncated) {
                 showToast(t('msg_file_too_large', file.name));
@@ -1215,17 +1377,21 @@ async function updateSupportedSettingsForPath(modelPath) {
     }
 }
 
-function applyLoadedModel(path, device, maxPromptLen) {
+function applyLoadedModel(path, device, maxPromptLen, kind) {
     const safePath = path || '';
     const safeDevice = device || 'AUTO';
     const safeMaxPromptLen = Number.isFinite(maxPromptLen)
         ? maxPromptLen
         : (maxPromptLenInput ? parseInt(maxPromptLenInput.value) : 16384);
+    const safeKind = typeof kind === 'string' && kind
+        ? kind
+        : getModelKindForPath(safePath);
 
     loadedModelConfig = {
         path: safePath,
         device: safeDevice,
-        maxPromptLen: safeMaxPromptLen
+        maxPromptLen: safeMaxPromptLen,
+        kind: safeKind
     };
     modelLoaded = true;
     saveLastModelConfig(safePath, safeDevice, safeMaxPromptLen);
@@ -1411,6 +1577,7 @@ async function loadConfig() {
         );
         availableDevices = data.available_devices || ['AUTO'];
         maxFileBytes = data.max_file_bytes || maxFileBytes;
+        maxImageBytes = data.max_image_bytes || maxImageBytes;
 
         populateDownloadModelList();
         renderDownloadCards(downloadSearchInput ? downloadSearchInput.value : '');
@@ -1463,12 +1630,12 @@ async function loadLocalModels() {
         localModels.forEach(model => {
             const option = document.createElement('option');
             option.value = model.path;
-            option.textContent = model.name;
+            option.textContent = formatModelLabel(model.name || model.path, model.kind);
             localModelSelect.appendChild(option);
             if (welcomeLocalModelSelect) {
                 const welcomeOption = document.createElement('option');
                 welcomeOption.value = model.path;
-                welcomeOption.textContent = model.name;
+                welcomeOption.textContent = formatModelLabel(model.name || model.path, model.kind);
                 welcomeLocalModelSelect.appendChild(welcomeOption);
             }
         });
@@ -1497,7 +1664,7 @@ async function deleteLocalModel() {
         showToast(t('opt_select_model'));
         return;
     }
-    const modelName = getModelDisplayName(modelPath);
+    const modelName = getModelDisplayName(modelPath, true);
     const confirmMsg = t('dialog_delete_model_body', `Delete model "${modelName}"?`);
     if (!window.confirm(confirmMsg)) return;
 
@@ -1541,7 +1708,7 @@ async function restoreModelStatus() {
             ? parseInt(lastConfig.max_prompt_len, 10)
             : (maxPromptLenInput ? parseInt(maxPromptLenInput.value) : 16384);
 
-        applyLoadedModel(path, device, maxPromptLen);
+        applyLoadedModel(path, device, maxPromptLen, data.kind);
         if (path) {
             await updateSupportedSettingsForPath(path);
         }
@@ -1646,7 +1813,7 @@ function renderMessages(messages) {
         welcomeScreen.classList.add('hidden');
         messagesDiv.innerHTML = '';
         messages.forEach((msg, index) => {
-            appendMessage(msg.role, msg.content, false, index);
+            appendMessage(msg.role, msg.content, false, index, msg.attachments || []);
         });
         scrollToBottom(true);
     }
@@ -1686,7 +1853,7 @@ function normalizeMessageContent(content) {
     return String(content);
 }
 
-function appendMessage(role, content, scroll = true, index = null) {
+function appendMessage(role, content, scroll = true, index = null, attachments = null) {
     welcomeScreen.classList.add('hidden');
 
     const messageDiv = document.createElement('div');
@@ -1717,6 +1884,8 @@ function appendMessage(role, content, scroll = true, index = null) {
 
     const actionsDiv = messageDiv.querySelector('.message-actions');
     attachMessageActions(actionsDiv, role, index);
+    const resolvedAttachments = attachments || (index !== null ? (getMessageByIndex(index)?.attachments || []) : []);
+    renderMessageAttachments(messageDiv, resolvedAttachments);
 
     messagesDiv.appendChild(messageDiv);
 
@@ -1789,6 +1958,8 @@ function updateMessageContent(index, content) {
     } else {
         contentDiv.innerHTML = formatContent(content, role);
     }
+    const attachments = getMessageByIndex(index)?.attachments || [];
+    renderMessageAttachments(messageDiv, attachments);
 }
 
 function truncateMessages(keepCount) {
@@ -2604,7 +2775,7 @@ async function sendMessage() {
     // Add user message
     const userIndex = currentMessages.length;
     currentMessages.push({ role: 'user', content: displayText, attachments });
-    appendMessage('user', displayText, true, userIndex);
+    appendMessage('user', displayText, true, userIndex, attachments);
     messageInput.value = '';
     autoResize(messageInput);
 
@@ -2771,7 +2942,7 @@ async function loadModelFromWelcome() {
 
         const data = await response.json();
 
-        applyLoadedModel(modelPath, data.device, maxPromptLen);
+        applyLoadedModel(modelPath, data.device, maxPromptLen, data.kind);
 
         showToast(t('dialog_loaded_msg', data.device));
     } catch (error) {
@@ -2819,7 +2990,7 @@ async function loadModel() {
 
         const data = await response.json();
 
-        applyLoadedModel(modelPath, data.device, maxPromptLen);
+        applyLoadedModel(modelPath, data.device, maxPromptLen, data.kind);
 
         showToast(t('dialog_loaded_msg', data.device));
         closeSettingsModal();
@@ -3173,6 +3344,15 @@ function setupEventListeners() {
         if (e.target === renameModal) closeRenameModal();
     });
 
+    if (imagePreviewClose) {
+        imagePreviewClose.addEventListener('click', closeImagePreview);
+    }
+    if (imagePreviewModal) {
+        imagePreviewModal.addEventListener('click', (e) => {
+            if (e.target === imagePreviewModal) closeImagePreview();
+        });
+    }
+
     // Load model
     loadModelConfirmBtn.addEventListener('click', loadModel);
     refreshModelsBtn.addEventListener('click', loadLocalModels);
@@ -3217,6 +3397,9 @@ function setupEventListeners() {
     document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
             closeModelSwitcher();
+            if (isImagePreviewOpen()) {
+                closeImagePreview();
+            }
         }
     });
 
