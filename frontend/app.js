@@ -16,6 +16,7 @@ let settingGroups = null;
 let pendingAttachments = [];
 let maxFileBytes = 512 * 1024;
 let maxImageBytes = 5 * 1024 * 1024;
+let maxAudioBytes = 20 * 1024 * 1024;
 let markdownReady = false;
 let mermaidReady = false;
 let codeHighlightReady = false;
@@ -645,6 +646,7 @@ function getModelKindLabel(kind) {
     if (normalized === 'vlm') return 'VLM';
     if (normalized === 'llm') return 'LLM';
     if (normalized === 'image') return 'IMG';
+    if (normalized === 'asr') return 'ASR';
     return '';
 }
 
@@ -1269,8 +1271,24 @@ function buildUserDisplayText(text, attachments) {
 
 function normalizeAttachment(att) {
     const content = typeof att.content === 'string' ? att.content : '';
-    const kind = (att.kind || (content.startsWith('data:image/') ? 'image' : 'text')).toLowerCase();
-    const mime = att.mime || (kind === 'image' ? parseDataUrl(content).mime : 'text/plain');
+    let kind = (att.kind || '').toLowerCase();
+    if (!kind) {
+        if (content.startsWith('data:image/')) {
+            kind = 'image';
+        } else if (content.startsWith('data:audio/')) {
+            kind = 'audio';
+        } else {
+            kind = 'text';
+        }
+    }
+    let mime = att.mime || '';
+    if (!mime) {
+        if (kind === 'image' || kind === 'audio') {
+            mime = parseDataUrl(content).mime;
+        } else {
+            mime = 'text/plain';
+        }
+    }
     const name = att.name || 'attachment';
     return { name, kind, mime, content };
 }
@@ -1366,7 +1384,14 @@ function renderMessageAttachments(messageDiv, attachments, messageIndex = null) 
         const item = document.createElement('div');
         item.className = 'message-attachment-card';
 
-        if (att.kind === 'image' && att.content.startsWith('data:image/')) {
+        if (att.kind === 'audio' && att.content.startsWith('data:audio/')) {
+            const audio = document.createElement('audio');
+            audio.className = 'message-attachment-audio';
+            audio.controls = true;
+            audio.src = att.content;
+            audio.preload = 'none';
+            item.appendChild(audio);
+        } else if (att.kind === 'image' && att.content.startsWith('data:image/')) {
             if (isAssistant) {
                 const canvas = createPixelRevealThumb(att.content, att.name);
                 canvas.addEventListener('click', () => openImagePreview(att.content, att.name));
@@ -1551,8 +1576,17 @@ function collectSessionAttachments() {
             const content = typeof att.content === 'string' ? att.content : '';
             if (!content) return;
             const name = att.name || `attachment-${msgIndex + 1}-${attIndex + 1}`;
-            const kind = (att.kind || (content.startsWith('data:image/') ? 'image' : 'text')).toLowerCase();
-            const mime = att.mime || (kind === 'image' ? parseDataUrl(content).mime : 'text/plain');
+            let kind = (att.kind || '').toLowerCase();
+            if (!kind) {
+                if (content.startsWith('data:image/')) {
+                    kind = 'image';
+                } else if (content.startsWith('data:audio/')) {
+                    kind = 'audio';
+                } else {
+                    kind = 'text';
+                }
+            }
+            const mime = att.mime || ((kind === 'image' || kind === 'audio') ? parseDataUrl(content).mime : 'text/plain');
             const size = estimateAttachmentSize({ content, kind });
             files.push({
                 id: `${msgIndex}-${attIndex}`,
@@ -1727,6 +1761,18 @@ function isImageFile(file) {
     return /\.(png|jpe?g|gif|bmp|webp|svg)$/i.test(file.name);
 }
 
+function isAudioFile(file) {
+    if (file && file.type && file.type.startsWith('audio/')) return true;
+    if (!file || !file.name) return false;
+    return /\.(wav|mp3|m4a|ogg|flac|aac)$/i.test(file.name);
+}
+
+function isSupportedAudioFile(file) {
+    if (!file) return false;
+    if (file.type && (file.type === 'audio/wav' || file.type === 'audio/x-wav')) return true;
+    return !!(file.name && /\.wav$/i.test(file.name));
+}
+
 function readFileAsDataUrl(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -1764,6 +1810,28 @@ async function handleFileSelection() {
                     truncated: false,
                     kind: 'image',
                     mime: file.type || ''
+                });
+                showToast(t('msg_file_attached', file.name));
+                continue;
+            }
+
+            if (isAudioFile(file)) {
+                if (!isSupportedAudioFile(file)) {
+                    showToast(t('msg_audio_format_unsupported', 'Only WAV audio is supported for transcription.'));
+                    continue;
+                }
+                const limit = maxAudioBytes || 20 * 1024 * 1024;
+                if (file.size > limit) {
+                    showToast(t('msg_file_too_large', file.name));
+                    continue;
+                }
+                const content = await readFileAsDataUrl(file);
+                pendingAttachments.push({
+                    name: file.name,
+                    content,
+                    truncated: false,
+                    kind: 'audio',
+                    mime: file.type || 'audio/wav'
                 });
                 showToast(t('msg_file_attached', file.name));
                 continue;
@@ -2010,6 +2078,7 @@ async function loadConfig() {
         availableDevices = data.available_devices || ['AUTO'];
         maxFileBytes = data.max_file_bytes || maxFileBytes;
         maxImageBytes = data.max_image_bytes || maxImageBytes;
+        maxAudioBytes = data.max_audio_bytes || maxAudioBytes;
 
         populateDownloadModelList();
         renderDownloadCards(downloadSearchInput ? downloadSearchInput.value : '');
@@ -3162,6 +3231,16 @@ function setAssistantPlaceholder(contentDiv) {
                     <span class="assistant-placeholder-text">${label}</span>
                     <span class="image-wait-hint">${hint}</span>
                 </div>
+            </div>
+        `;
+        return;
+    }
+    if (mode === 'asr') {
+        const label = escapeHtml(t('msg_transcribing_audio', 'Transcribing audio...'));
+        contentDiv.innerHTML = `
+            <div class="assistant-placeholder">
+                <span class="assistant-placeholder-text">${label}</span>
+                <span class="typing-dots"><span></span><span></span><span></span></span>
             </div>
         `;
         return;

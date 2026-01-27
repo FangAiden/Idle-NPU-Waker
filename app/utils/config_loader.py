@@ -109,6 +109,27 @@ def _infer_image_setting_keys() -> Set[str]:
         "rng_seed",
     }
 
+def _infer_asr_setting_keys() -> Set[str]:
+    try:
+        import openvino_genai as ov_genai
+        cfg = ov_genai.WhisperGenerationConfig()
+        keys = set()
+        for name in dir(cfg):
+            if name.startswith("_"):
+                continue
+            try:
+                value = getattr(cfg, name)
+            except Exception:
+                continue
+            if callable(value):
+                continue
+            keys.add(name)
+        if keys:
+            return keys
+    except Exception:
+        pass
+    return {"language", "task", "return_timestamps", "initial_prompt", "hotwords"}
+
 def _match_model_rule(rule_id: str, rule: Dict[str, Any],
                       model_name: Optional[str], model_path: Optional[str]) -> bool:
     if not rule_id:
@@ -140,8 +161,11 @@ def resolve_supported_setting_keys(model_name: Optional[str] = None,
     if model_path:
         try:
             from app.utils.model_type import detect_model_kind
-            if detect_model_kind(Path(model_path)) == "image":
+            kind = detect_model_kind(Path(model_path))
+            if kind == "image":
                 return _infer_image_setting_keys()
+            if kind == "asr":
+                return _infer_asr_setting_keys()
         except Exception:
             pass
 

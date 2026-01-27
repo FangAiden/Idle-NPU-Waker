@@ -1170,6 +1170,15 @@ body {
     box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
 }
 
+.message-attachment-audio {
+    width: 180px;
+    max-width: 100%;
+    height: 32px;
+    border-radius: 8px;
+    background-color: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+}
+
 .message-attachment-info {
     display: flex;
     flex-direction: column;

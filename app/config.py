@@ -6,6 +6,7 @@ from pathlib import Path
 APP_VERSION = "1.0.1"
 MAX_FILE_BYTES = 512 * 1024
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
+MAX_AUDIO_BYTES = 20 * 1024 * 1024
 
 if getattr(sys, "frozen", False):
     APP_ROOT = Path(sys.executable).parent.resolve()

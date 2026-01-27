@@ -37,6 +37,92 @@ def _decode_image_data(data_url: str):
     except Exception:
         return None
 
+def _decode_audio_data_url(data_url: str):
+    if not data_url:
+        return None
+    if not isinstance(data_url, str):
+        return None
+    if not data_url.startswith("data:"):
+        return None
+    try:
+        header, b64 = data_url.split(",", 1)
+    except ValueError:
+        return None
+    if "base64" not in header:
+        return None
+    try:
+        import base64
+        raw = base64.b64decode(b64, validate=False)
+    except Exception:
+        return None
+    mime = ""
+    try:
+        mime = header.split(";", 1)[0].replace("data:", "", 1)
+    except Exception:
+        mime = ""
+    return {"bytes": raw, "mime": mime or "application/octet-stream"}
+
+def _decode_wav_bytes(raw: bytes):
+    try:
+        import wave
+        import numpy as np
+    except Exception:
+        return None
+    try:
+        with wave.open(io.BytesIO(raw), "rb") as wf:
+            sr = wf.getframerate()
+            channels = wf.getnchannels()
+            sampwidth = wf.getsampwidth()
+            frames = wf.readframes(wf.getnframes())
+    except Exception:
+        return None
+    if not frames:
+        return None
+    try:
+        if sampwidth == 1:
+            audio = np.frombuffer(frames, dtype=np.uint8).astype(np.float32)
+            audio = (audio - 128.0) / 128.0
+        elif sampwidth == 2:
+            audio = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+        elif sampwidth == 3:
+            data = np.frombuffer(frames, dtype=np.uint8).reshape(-1, 3)
+            audio = (data[:, 0].astype(np.int32) |
+                     (data[:, 1].astype(np.int32) << 8) |
+                     (data[:, 2].astype(np.int32) << 16))
+            audio = (audio ^ 0x800000) - 0x800000
+            audio = audio.astype(np.float32) / 8388608.0
+        elif sampwidth == 4:
+            audio = np.frombuffer(frames, dtype=np.int32).astype(np.float32) / 2147483648.0
+        else:
+            return None
+    except Exception:
+        return None
+    if channels and channels > 1:
+        try:
+            audio = audio.reshape(-1, channels).mean(axis=1)
+        except Exception:
+            return None
+    return audio, sr
+
+def _resample_audio(audio, src_rate: int, target_rate: int = 16000):
+    if src_rate == target_rate:
+        return audio
+    try:
+        import numpy as np
+    except Exception:
+        return audio
+    if audio is None:
+        return audio
+    length = len(audio)
+    if length == 0:
+        return audio
+    target_len = int(length * float(target_rate) / float(src_rate))
+    if target_len <= 0:
+        return audio
+    x_old = np.linspace(0, length - 1, num=length)
+    x_new = np.linspace(0, length - 1, num=target_len)
+    return np.interp(x_new, x_old, audio).astype(np.float32)
+
 def _strip_attachment_block(text: str) -> str:
     if not text:
         return ""
@@ -152,6 +238,27 @@ def _extract_vlm_images(messages):
             images.append(tensor)
     return images
 
+def _extract_asr_audio(messages):
+    last_user = None
+    for msg in reversed(messages or []):
+        if msg.get("role") == "user":
+            last_user = msg
+            break
+    if not last_user:
+        return None
+    attachments = last_user.get("attachments") or []
+    for att in attachments:
+        kind = (att.get("kind") or "").lower()
+        content = str(att.get("content", ""))
+        mime = str(att.get("mime", "") or "").lower()
+        if kind != "audio" and not content.startswith("data:audio/") and not mime.startswith("audio/"):
+            continue
+        decoded = _decode_audio_data_url(content)
+        if not decoded:
+            continue
+        return decoded
+    return None
+
 def _is_prompt_too_long(err: Exception) -> bool:
     if not err:
         return False
@@ -235,7 +342,7 @@ def llm_process_entry(cmd_queue, res_queue, stop_event):
                         gen_params.pop(k)
 
                 supported_keys = None
-                if runtime.model_kind == "image":
+                if runtime.model_kind in ("image", "asr"):
                     supported_keys = runtime.supported_keys
                 if not supported_keys:
                     supported_keys = resolve_supported_setting_keys(
@@ -321,6 +428,75 @@ def llm_process_entry(cmd_queue, res_queue, stop_event):
                                 "time": round(elapsed, 2),
                                 "speed": 0,
                                 "images": len(attachments),
+                            },
+                        })
+                    continue
+
+                if runtime.model_kind == "asr":
+                    audio_payload = _extract_asr_audio(messages)
+                    if not audio_payload:
+                        res_queue.put({"type": "error", "msg": "Gen Error: Please attach an audio file (WAV, 16kHz)."})
+                        continue
+                    decoded = None
+                    try:
+                        decoded = _decode_wav_bytes(audio_payload["bytes"])
+                    except Exception:
+                        decoded = None
+                    if not decoded:
+                        res_queue.put({"type": "error", "msg": "Gen Error: Unsupported audio format. Please upload WAV audio."})
+                        continue
+                    audio, sr = decoded
+                    if audio is None:
+                        res_queue.put({"type": "error", "msg": "Gen Error: Failed to decode audio."})
+                        continue
+                    audio = _resample_audio(audio, sr, 16000)
+                    try:
+                        audio_list = [float(x) for x in audio]
+                    except Exception:
+                        try:
+                            audio_list = list(audio)
+                        except Exception:
+                            res_queue.put({"type": "error", "msg": "Gen Error: Failed to prepare audio for inference."})
+                            continue
+
+                    token_count = 0
+                    start_time = time.time()
+
+                    streamed = False
+
+                    def asr_streamer(chunk: str):
+                        nonlocal token_count
+                        nonlocal streamed
+                        if stop_event.is_set():
+                            return True
+                        if chunk:
+                            token_count += 1
+                            streamed = True
+                            res_queue.put({"type": "token", "token": chunk})
+                        return False
+
+                    try:
+                        result = runtime.pipe.generate(audio_list, streamer=asr_streamer, **gen_params)
+                        text = ""
+                        try:
+                            texts = getattr(result, "texts", None)
+                            if texts:
+                                text = str(texts[0])
+                        except Exception:
+                            text = str(result) if result is not None else ""
+                        if text and not streamed:
+                            res_queue.put({"type": "token", "token": text})
+                    except Exception as e:
+                        res_queue.put({"type": "error", "msg": f"Gen Error: {str(e)}"})
+                    finally:
+                        elapsed = time.time() - start_time
+                        speed = token_count / elapsed if elapsed > 0 else 0
+                        res_queue.put({
+                            "type": "finished",
+                            "stats": {
+                                "tokens": token_count,
+                                "time": round(elapsed, 2),
+                                "speed": round(speed, 2),
                             },
                         })
                     continue

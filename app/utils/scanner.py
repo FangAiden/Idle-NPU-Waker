@@ -41,7 +41,7 @@ def scan_dirs(roots: List[Path], max_depth: int = 4):
                     kind = detect_model_kind(d)
                 except Exception:
                     kind = ""
-                if kind == "image":
+                if kind in ("image", "asr"):
                     key = str(d.resolve())
                     if key not in seen:
                         seen.add(key)

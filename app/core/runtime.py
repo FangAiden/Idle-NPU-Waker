@@ -146,6 +146,25 @@ def _infer_image_supported_keys() -> Optional[set]:
     except Exception:
         return None
 
+def _infer_asr_supported_keys() -> Optional[set]:
+    try:
+        import openvino_genai as ov_genai
+        cfg = ov_genai.WhisperGenerationConfig()
+        keys = set()
+        for name in dir(cfg):
+            if name.startswith("_"):
+                continue
+            try:
+                value = getattr(cfg, name)
+            except Exception:
+                continue
+            if callable(value):
+                continue
+            keys.add(name)
+        return keys or None
+    except Exception:
+        return None
+
 def _infer_image_max_sequence_length(model_path: Path) -> Optional[int]:
     candidates = [
         model_path / "tokenizer_2" / "tokenizer_config.json",
@@ -286,7 +305,7 @@ class RuntimeState:
                 log_to_file(f"FATAL: Tokenizer init failed: {e}")
                 raise e
         else:
-            log_to_file("Skipping tokenizer for image generation model.")
+            log_to_file("Skipping tokenizer for non-LLM model.")
         
         dev = want_device if want_device in AVAILABLE_DEVICES else "AUTO"
         device_props = _build_device_props(dev, model_path, cache_tag=image_cache_tag,
@@ -296,6 +315,8 @@ class RuntimeState:
 
         if model_kind == "image":
             pipeline_name = "Text2ImagePipeline"
+        elif model_kind == "asr":
+            pipeline_name = "WhisperPipeline"
         else:
             pipeline_name = "VLMPipeline" if model_kind == "vlm" else "LLMPipeline"
         log_to_file(f"Initializing {pipeline_name} on {dev}...")
@@ -324,6 +345,11 @@ class RuntimeState:
                     except Exception as e:
                         log_to_file(f"WARN: Failed to set max_sequence_length for image pipeline: {e}")
                 log_to_file("Text2ImagePipeline created successfully.")
+            elif model_kind == "asr":
+                pipe = ov_genai.WhisperPipeline(str_path, device=dev, **device_props)
+                self.max_prompt_len = None
+                self.supported_keys = _infer_asr_supported_keys()
+                log_to_file("WhisperPipeline created successfully.")
             elif model_kind == "vlm":
                 self.supported_keys = None
                 if dev == "NPU" or (dev == "AUTO" and "NPU" in AVAILABLE_DEVICES):
@@ -390,6 +416,10 @@ class RuntimeState:
                             log_to_file(f"Text2ImagePipeline max_sequence_length set to {self.image_max_sequence_length}")
                     except Exception as e:
                         log_to_file(f"WARN: Failed to set max_sequence_length for image pipeline: {e}")
+            elif model_kind == "asr":
+                pipe = ov_genai.WhisperPipeline(str_path, device=dev, **device_props)
+                self.max_prompt_len = None
+                self.supported_keys = _infer_asr_supported_keys()
             elif model_kind == "vlm":
                 pipe = ov_genai.VLMPipeline(str_path, device=dev, **device_props)
                 self.max_prompt_len = max_prompt_len

@@ -39,6 +39,7 @@ from app.config import (
     save_path_overrides,
     MAX_FILE_BYTES,
     MAX_IMAGE_BYTES,
+    MAX_AUDIO_BYTES,
 )
 from app.core.runtime import AVAILABLE_DEVICES
 from app.core.session import SessionManager
@@ -161,6 +162,8 @@ def _sanitize_attachments(attachments: Optional[List[FileAttachment]]) -> List[D
         if not kind:
             if mime.startswith("image/") or content.startswith("data:image/"):
                 kind = "image"
+            elif mime.startswith("audio/") or content.startswith("data:audio/"):
+                kind = "audio"
             else:
                 kind = "text"
         truncated = False
@@ -183,6 +186,26 @@ def _sanitize_attachments(attachments: Optional[List[FileAttachment]]) -> List[D
                 truncated = True
                 continue
             safe.append({"name": name[:200], "content": data_url, "truncated": truncated, "kind": "image", "mime": mime})
+            continue
+        if kind == "audio":
+            data_url = content
+            if not data_url.startswith("data:"):
+                continue
+            try:
+                header, b64 = data_url.split(",", 1)
+            except ValueError:
+                continue
+            if "base64" not in header:
+                continue
+            try:
+                import base64
+                raw = base64.b64decode(b64, validate=False)
+            except Exception:
+                continue
+            if len(raw) > MAX_AUDIO_BYTES:
+                truncated = True
+                continue
+            safe.append({"name": name[:200], "content": data_url, "truncated": truncated, "kind": "audio", "mime": mime})
             continue
         encoded = content.encode("utf-8", errors="ignore")
         truncated = len(encoded) > MAX_FILE_BYTES
@@ -231,7 +254,7 @@ def _format_attachments(attachments: List[Dict[str, Any]]) -> str:
         return ""
     lines = ["[Attachments]"]
     for item in attachments:
-        if (item.get("kind") or "").lower() == "image":
+        if (item.get("kind") or "").lower() in ("image", "audio"):
             continue
         name = str(item.get("name", ""))
         content = str(item.get("content", ""))
@@ -294,6 +317,7 @@ def api_config():
         "models_dir": str(MODELS_DIR),
         "max_file_bytes": MAX_FILE_BYTES,
         "max_image_bytes": MAX_IMAGE_BYTES,
+        "max_audio_bytes": MAX_AUDIO_BYTES,
         "app_paths": {
             "models_dir": str(MODELS_DIR),
             "download_cache_dir": str(DOWNLOAD_CACHE_DIR),
@@ -557,7 +581,7 @@ def api_sessions_attachment(sid: str, msg_index: int, att_index: int):
 
         raw = None
         media_type = mime or "application/octet-stream"
-        if kind == "image" and isinstance(content, str) and content.startswith("data:"):
+        if kind in ("image", "audio") and isinstance(content, str) and content.startswith("data:"):
             decoded = _decode_data_url(content)
             if decoded:
                 raw = decoded["bytes"]
@@ -662,7 +686,6 @@ def api_chat_stream(req: ChatStreamRequest):
     messages = _build_messages(history, config)
     assistant_text = ""
     assistant_attachments: List[Dict[str, Any]] = []
-    assistant_attachments: List[Dict[str, Any]] = []
 
     def event_stream():
         nonlocal assistant_text
@@ -736,6 +759,7 @@ def api_chat_regenerate(req: ChatRegenerateRequest):
 
     messages = _build_messages(history, config)
     assistant_text = ""
+    assistant_attachments: List[Dict[str, Any]] = []
 
     def event_stream():
         nonlocal assistant_text
