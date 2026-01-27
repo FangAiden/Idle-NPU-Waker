@@ -89,6 +89,7 @@ class RuntimeState:
         self.model_path: Optional[Path] = None
         self.model_kind: str = "llm"
         self._ov_genai: Optional[Any] = None
+        self.max_prompt_len: Optional[int] = None
 
     def _get_ov_genai(self):
         if self._ov_genai is None:
@@ -110,6 +111,7 @@ class RuntimeState:
         self.pipe = None
         self.tokenizer = None
         self.model_kind = "llm"
+        self.max_prompt_len = None
         
         gc.collect()
         gc.collect()
@@ -188,27 +190,39 @@ class RuntimeState:
             progress_cb("pipeline", f"Initializing pipeline on {dev}")
         try:
             if model_kind == "vlm":
-                try:
-                    if dev == "NPU" or (dev == "AUTO" and "NPU" in AVAILABLE_DEVICES):
+                if dev == "NPU" or (dev == "AUTO" and "NPU" in AVAILABLE_DEVICES):
+                    try:
                         pipe = ov_genai.VLMPipeline(
                             str_path, device=dev, MAX_PROMPT_LEN=max_prompt_len, **device_props
                         )
+                        self.max_prompt_len = max_prompt_len
                         log_to_file(f"VLMPipeline created with MAX_PROMPT_LEN={max_prompt_len}")
-                    else:
+                    except Exception as e:
+                        log_to_file(f"WARN: VLMPipeline MAX_PROMPT_LEN unsupported, retry without it: {e}")
                         pipe = ov_genai.VLMPipeline(str_path, device=dev, **device_props)
+                        self.max_prompt_len = 1024
                         log_to_file("VLMPipeline created successfully.")
-                except TypeError:
+                else:
                     pipe = ov_genai.VLMPipeline(str_path, device=dev, **device_props)
+                    self.max_prompt_len = max_prompt_len
                     log_to_file("VLMPipeline created successfully.")
             else:
                 # NPU needs MAX_PROMPT_LEN for longer conversations
                 if dev == "NPU" or (dev == "AUTO" and "NPU" in AVAILABLE_DEVICES):
-                    pipe = ov_genai.LLMPipeline(
-                        str_path, device=dev, MAX_PROMPT_LEN=max_prompt_len, **device_props
-                    )
-                    log_to_file(f"LLMPipeline created with MAX_PROMPT_LEN={max_prompt_len}")
+                    try:
+                        pipe = ov_genai.LLMPipeline(
+                            str_path, device=dev, MAX_PROMPT_LEN=max_prompt_len, **device_props
+                        )
+                        self.max_prompt_len = max_prompt_len
+                        log_to_file(f"LLMPipeline created with MAX_PROMPT_LEN={max_prompt_len}")
+                    except Exception as e:
+                        log_to_file(f"WARN: MAX_PROMPT_LEN unsupported, retry without it: {e}")
+                        pipe = ov_genai.LLMPipeline(str_path, device=dev, **device_props)
+                        self.max_prompt_len = max_prompt_len
+                        log_to_file("LLMPipeline created successfully.")
                 else:
                     pipe = ov_genai.LLMPipeline(str_path, device=dev, **device_props)
+                    self.max_prompt_len = max_prompt_len
                     log_to_file("LLMPipeline created successfully.")
         except Exception as e:
             log_to_file(f"ERROR: Pipeline init failed on {dev}: {e}")
@@ -221,6 +235,7 @@ class RuntimeState:
                 pipe = ov_genai.VLMPipeline(str_path, device=dev, **device_props)
             else:
                 pipe = ov_genai.LLMPipeline(str_path, device=dev, **device_props)
+            self.max_prompt_len = max_prompt_len
             log_to_file("Fallback to CPU successful.")
 
         self.model_source = want_source

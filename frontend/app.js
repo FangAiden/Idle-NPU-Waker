@@ -1221,48 +1221,81 @@ function buildUserDisplayText(text, attachments) {
     return text ? `${text}\n\n${note}` : note;
 }
 
-function getImageAttachments(attachments) {
-    if (!Array.isArray(attachments) || attachments.length === 0) return [];
-    return attachments.filter(att => {
-        if (!att || typeof att.content !== 'string') return false;
-        const kind = (att.kind || '').toLowerCase();
-        if (kind && kind !== 'image') return false;
-        return att.content.startsWith('data:image/');
-    });
+function normalizeAttachment(att) {
+    const content = typeof att.content === 'string' ? att.content : '';
+    const kind = (att.kind || (content.startsWith('data:image/') ? 'image' : 'text')).toLowerCase();
+    const mime = att.mime || (kind === 'image' ? parseDataUrl(content).mime : 'text/plain');
+    const name = att.name || 'attachment';
+    return { name, kind, mime, content };
 }
 
-function renderMessageAttachments(messageDiv, attachments) {
+function renderMessageAttachments(messageDiv, attachments, messageIndex = null) {
     if (!messageDiv) return;
     const existing = messageDiv.querySelector('.message-attachments');
     if (existing) existing.remove();
 
-    const images = getImageAttachments(attachments);
-    if (images.length === 0) return;
+    if (!Array.isArray(attachments) || attachments.length === 0) return;
 
     const wrap = document.createElement('div');
     wrap.className = 'message-attachments';
-    images.forEach(att => {
+
+    attachments.forEach((raw, attIndex) => {
+        const att = normalizeAttachment(raw);
         const item = document.createElement('div');
-        item.className = 'message-attachment';
+        item.className = 'message-attachment-card';
 
-        const img = document.createElement('img');
-        img.className = 'message-attachment-image';
-        img.alt = att.name || 'image';
-        img.title = att.name || '';
-        img.loading = 'lazy';
-        img.decoding = 'async';
-        img.src = att.content;
-        img.tabIndex = 0;
-        img.setAttribute('role', 'button');
-        img.addEventListener('click', () => openImagePreview(att.content, att.name));
-        img.addEventListener('keydown', (event) => {
-            if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault();
-                openImagePreview(att.content, att.name);
-            }
-        });
+        if (att.kind === 'image' && att.content.startsWith('data:image/')) {
+            const thumb = document.createElement('img');
+            thumb.className = 'message-attachment-thumb';
+            thumb.alt = att.name || 'image';
+            thumb.title = att.name || '';
+            thumb.loading = 'lazy';
+            thumb.decoding = 'async';
+            thumb.src = att.content;
+            thumb.tabIndex = 0;
+            thumb.setAttribute('role', 'button');
+            thumb.addEventListener('click', () => openImagePreview(att.content, att.name));
+            thumb.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    openImagePreview(att.content, att.name);
+                }
+            });
+            item.appendChild(thumb);
+        }
 
-        item.appendChild(img);
+        const info = document.createElement('div');
+        info.className = 'message-attachment-info';
+        const name = document.createElement('div');
+        name.className = 'message-attachment-name';
+        name.textContent = att.name;
+        const meta = document.createElement('div');
+        meta.className = 'message-attachment-meta';
+        const size = estimateAttachmentSize(att);
+        const kindLabel = att.kind ? att.kind.toUpperCase() : 'FILE';
+        meta.textContent = `${kindLabel} · ${formatBytes(size)}`;
+        info.appendChild(name);
+        info.appendChild(meta);
+        item.appendChild(info);
+
+        const actions = document.createElement('div');
+        actions.className = 'message-attachment-actions';
+        const downloadBtn = document.createElement('button');
+        downloadBtn.className = 'refresh-btn';
+        downloadBtn.type = 'button';
+        downloadBtn.textContent = t('btn_download_file', 'Download');
+        const file = {
+            name: att.name,
+            kind: att.kind,
+            mime: att.mime,
+            content: att.content,
+            messageIndex: Number.isInteger(messageIndex) ? messageIndex : null,
+            attachmentIndex: attIndex
+        };
+        downloadBtn.addEventListener('click', () => downloadAttachment(file));
+        actions.appendChild(downloadBtn);
+        item.appendChild(actions);
+
         wrap.appendChild(item);
     });
 
@@ -2266,7 +2299,7 @@ function appendMessage(role, content, scroll = true, index = null, attachments =
     const actionsDiv = messageDiv.querySelector('.message-actions');
     attachMessageActions(actionsDiv, role, index);
     const resolvedAttachments = attachments || (index !== null ? (getMessageByIndex(index)?.attachments || []) : []);
-    renderMessageAttachments(messageDiv, resolvedAttachments);
+    renderMessageAttachments(messageDiv, resolvedAttachments, index);
 
     messagesDiv.appendChild(messageDiv);
 
@@ -2340,7 +2373,7 @@ function updateMessageContent(index, content) {
         contentDiv.innerHTML = formatContent(content, role);
     }
     const attachments = getMessageByIndex(index)?.attachments || [];
-    renderMessageAttachments(messageDiv, attachments);
+    renderMessageAttachments(messageDiv, attachments, index);
 }
 
 function truncateMessages(keepCount) {
@@ -3134,7 +3167,12 @@ async function sendMessage() {
 
     // Create session if needed
     if (!currentSessionId) {
+        const pendingSnapshot = pendingAttachments.slice();
         await createNewChat();
+        if (pendingSnapshot.length > 0) {
+            pendingAttachments = pendingSnapshot;
+            renderAttachments();
+        }
     }
 
     if (editingIndex !== null) {

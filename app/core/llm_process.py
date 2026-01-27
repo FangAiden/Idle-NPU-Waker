@@ -52,6 +52,12 @@ def _extract_vlm_images(messages):
             images.append(tensor)
     return images
 
+def _is_prompt_too_long(err: Exception) -> bool:
+    if not err:
+        return False
+    msg = str(err)
+    return "m_max_prompt_len" in msg or "MAX_PROMPT_LEN" in msg or "prompt_len" in msg
+
 from app.config import DEFAULT_CONFIG
 from app.utils.config_loader import resolve_supported_setting_keys
 
@@ -124,20 +130,9 @@ def llm_process_entry(cmd_queue, res_queue, stop_event):
                 if supported_keys:
                     gen_params = {k: v for k, v in gen_params.items() if k in supported_keys}
 
-                try:
-                    prompt = runtime.tokenizer.apply_chat_template(
-                        messages,
-                        add_generation_prompt=add_gen_prompt,
-                    )
-                except Exception:
-                    prompt = ""
-                    for msg in messages:
-                        prompt += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
-                    if add_gen_prompt:
-                        prompt += "<|im_start|>assistant\n"
-
                 token_count = 0
                 start_time = time.time()
+                prompt = ""
 
                 if ov_genai is None:
                     try:
@@ -158,16 +153,38 @@ def llm_process_entry(cmd_queue, res_queue, stop_event):
                     gen_cfg = ov_genai.GenerationConfig(**gen_params)
                     streamer = ov_genai.TextStreamer(runtime.tokenizer, streamer_cb)
 
-                    if runtime.model_kind == "vlm":
-                        images = _extract_vlm_images(messages)
-                        if images:
-                            runtime.pipe.generate(prompt, images=images, generation_config=gen_cfg, streamer=streamer)
+                    def run_generate(msgs):
+                        nonlocal token_count, start_time, prompt
+                        try:
+                            prompt = runtime.tokenizer.apply_chat_template(
+                                msgs,
+                                add_generation_prompt=add_gen_prompt,
+                            )
+                        except Exception:
+                            prompt = ""
+                            for msg in msgs:
+                                prompt += f"<|im_start|>{msg['role']}\n{msg['content']}<|im_end|>\n"
+                            if add_gen_prompt:
+                                prompt += "<|im_start|>assistant\n"
+                        token_count = 0
+                        start_time = time.time()
+                        if runtime.model_kind == "vlm":
+                            images = _extract_vlm_images(msgs)
+                            if images:
+                                runtime.pipe.generate(prompt, images=images, generation_config=gen_cfg, streamer=streamer)
+                            else:
+                                runtime.pipe.generate(prompt, generation_config=gen_cfg, streamer=streamer)
                         else:
                             runtime.pipe.generate(prompt, generation_config=gen_cfg, streamer=streamer)
-                    else:
-                        runtime.pipe.generate(prompt, generation_config=gen_cfg, streamer=streamer)
+
+                    run_generate(messages)
                 except Exception as e:
-                    res_queue.put({"type": "error", "msg": f"Gen Error: {str(e)}"})
+                    limit = getattr(runtime, "max_prompt_len", None)
+                    if runtime.model_kind == "vlm" and _is_prompt_too_long(e):
+                        hint = f"VLM prompt too long (limit {limit or 1024}). Reduce history or shorten input."
+                        res_queue.put({"type": "error", "msg": f"Gen Error: {hint}"})
+                    else:
+                        res_queue.put({"type": "error", "msg": f"Gen Error: {str(e)}"})
                 finally:
                     elapsed = time.time() - start_time
                     speed = token_count / elapsed if elapsed > 0 else 0

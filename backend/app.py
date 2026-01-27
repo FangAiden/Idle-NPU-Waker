@@ -652,7 +652,8 @@ def api_chat_stream(req: ChatStreamRequest):
         session_mgr.add_message("user", req.text, sid=req.session_id, **msg_kwargs)
         session_mgr.current_session_id = req.session_id
         session_mgr._save_sessions()
-        history = list(session.get("history", []))
+        session = session_mgr.get_session(req.session_id)
+        history = list(session.get("history", [])) if session else []
 
     config = DEFAULT_CONFIG.copy()
     if req.config:
