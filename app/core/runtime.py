@@ -5,12 +5,12 @@ import time
 import sys
 from pathlib import Path
 from typing import Optional, Tuple, Callable, Any, TYPE_CHECKING
-from app.config import MODELS_DIR, OV_CACHE_DIR, DATA_DIR
+from app.config import MODELS_DIR, OV_CACHE_DIR, LOGS_DIR
 
 if TYPE_CHECKING:
     import openvino_genai as ov_genai
 
-LOG_PATH = DATA_DIR / "runtime.log"
+LOG_PATH = LOGS_DIR / "runtime.log"
 
 def log_to_file(msg):
     try:

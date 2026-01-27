@@ -90,6 +90,12 @@
                     </div>
                 </div>
                 <div class="model-bar-actions">
+                    <button class="perf-toggle-btn" id="sessionFilesBtn" type="button" title="Session Files" data-i18n-title="btn_session_files">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M21 15V7a2 2 0 0 0-2-2h-4l-2-2H7a2 2 0 0 0-2 2v10"></path>
+                            <rect x="3" y="9" width="18" height="10" rx="2" ry="2"></rect>
+                        </svg>
+                    </button>
                     <button class="perf-toggle-btn" id="performancePanelToggleBtn" type="button" title="Performance Panel" data-i18n-title="btn_perf_panel">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <line x1="4" y1="20" x2="4" y2="10"></line>
@@ -257,6 +263,7 @@
                     <button class="tab-btn active" data-tab="model" data-i18n="tab_model">Model</button>
                     <button class="tab-btn" data-tab="generation" data-i18n="grp_generation">Generation</button>
                     <button class="tab-btn" data-tab="context" data-i18n="grp_context">Context</button>
+                    <button class="tab-btn" data-tab="storage" data-i18n="tab_storage">Storage</button>
                 </div>
                 <div class="settings-tab-body">
                     <div class="tab-content active" id="tab-model">
@@ -345,6 +352,51 @@
                                 <span data-i18n="conf_enable_thinking">Enable Thinking</span>
                             </label>
                         </div>
+                    </div>
+
+                    <div class="tab-content" id="tab-storage">
+                        <div class="setting-group">
+                            <label data-i18n="label_chat_size">Current Chat Size</label>
+                            <div class="setting-inline">
+                                <span id="currentChatSize">--</span>
+                                <button class="refresh-btn danger-btn" id="clearChatBtn" type="button" data-i18n="btn_clear_chat">Clear Chat</button>
+                            </div>
+                        </div>
+                        <div class="setting-group">
+                            <label data-i18n="label_app_paths">App Data Paths</label>
+                            <div class="setting-hint" data-i18n="hint_app_paths">Leave blank to use default. Restart required after changes.</div>
+                        </div>
+                        <div class="setting-group">
+                            <label data-i18n="label_models_dir">Models Directory</label>
+                            <input type="text" id="modelsDirInput" placeholder="C:\\...">
+                        </div>
+                        <div class="setting-group">
+                            <label data-i18n="label_ov_cache_dir">Compiled Cache Directory</label>
+                            <input type="text" id="ovCacheDirInput" placeholder="C:\\...">
+                        </div>
+                        <div class="setting-group">
+                            <label data-i18n="label_download_cache_dir">Download Cache Directory</label>
+                            <input type="text" id="downloadCacheDirInput" placeholder="C:\\...">
+                        </div>
+                        <div class="setting-group">
+                            <label data-i18n="label_sessions_db">Chat Database</label>
+                            <input type="text" id="sessionsDbInput" placeholder="C:\\...\\sessions.db">
+                        </div>
+                        <div class="setting-group">
+                            <label data-i18n="label_config_dir">Config Directory</label>
+                            <input type="text" id="configDirInput" placeholder="C:\\...">
+                        </div>
+                        <div class="setting-group">
+                            <label data-i18n="label_logs_dir">Logs Directory</label>
+                            <input type="text" id="logsDirInput" placeholder="C:\\...">
+                        </div>
+                        <div class="setting-group">
+                            <label data-i18n="label_attachments_dir">Attachment Download Directory</label>
+                            <input type="text" id="attachmentsDirInput" placeholder="System default (Downloads)">
+                            <div class="setting-hint" data-i18n="hint_attachments_dir">Used for session file downloads.</div>
+                        </div>
+                        <button class="primary-btn" id="saveAppPathsBtn" type="button" data-i18n="btn_save_paths">Save Paths</button>
+                        <div class="setting-hint hidden" id="pathsRestartHint" data-i18n="hint_restart_required">Restart app to apply new paths.</div>
                     </div>
                 </div>
             </div>
@@ -439,6 +491,22 @@
                     <button class="secondary-btn" id="cancelRenameBtn" data-i18n="btn_cancel">Cancel</button>
                     <button class="primary-btn" id="confirmRenameBtn" data-i18n="menu_rename_chat">Rename</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay hidden ui-modal" id="sessionFilesModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h2 data-i18n="dialog_session_files">Session Files</h2>
+                <button class="close-btn" id="closeSessionFilesBtn">&times;</button>
+            </div>
+            <div class="modal-content">
+                <div class="session-files-meta">
+                    <span id="sessionFilesCount">0 files</span>
+                </div>
+                <div class="session-files-list" id="sessionFilesList"></div>
+                <div class="session-files-empty hidden" id="sessionFilesEmpty" data-i18n="session_files_empty">No files in this session.</div>
             </div>
         </div>
     </div>

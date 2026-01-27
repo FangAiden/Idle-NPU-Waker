@@ -9,6 +9,7 @@ use std::sync::{
 };
 use std::time::{Duration, Instant};
 
+use base64::Engine as _;
 use serde::Serialize;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{
@@ -330,6 +331,70 @@ fn exit_app(app: tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+fn sanitize_filename(name: &str) -> String {
+    let mut safe = name.trim().to_string();
+    if safe.is_empty() {
+        return "attachment".to_string();
+    }
+    let invalid = ['\\', '/', ':', '*', '?', '"', '<', '>', '|'];
+    for ch in invalid {
+        safe = safe.replace(ch, "_");
+    }
+    safe
+}
+
+fn unique_path(path: PathBuf) -> PathBuf {
+    if !path.exists() {
+        return path;
+    }
+    let stem = path.file_stem().and_then(|s| s.to_str()).unwrap_or("attachment");
+    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("");
+    let parent = path.parent().map(|p| p.to_path_buf()).unwrap_or_else(|| PathBuf::from("."));
+    for idx in 1..1000 {
+        let file_name = if ext.is_empty() {
+            format!("{stem}-{idx}")
+        } else {
+            format!("{stem}-{idx}.{ext}")
+        };
+        let candidate = parent.join(file_name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+    path
+}
+
+#[tauri::command]
+fn save_attachment_to_downloads(
+    name: String,
+    data_base64: String,
+    target_dir: Option<String>,
+) -> Result<String, String> {
+    let downloads = if let Some(dir) = target_dir {
+        let trimmed = dir.trim();
+        if !trimmed.is_empty() {
+            PathBuf::from(trimmed)
+        } else {
+            dirs::download_dir().ok_or("No download directory")?
+        }
+    } else {
+        dirs::download_dir().ok_or("No download directory")?
+    };
+    if !downloads.exists() {
+        std::fs::create_dir_all(&downloads).map_err(|err| err.to_string())?;
+    }
+    let safe_name = sanitize_filename(&name);
+    let mut target = downloads.join(safe_name);
+    target = unique_path(target);
+
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.trim())
+        .map_err(|err| err.to_string())?;
+
+    std::fs::write(&target, bytes).map_err(|err| err.to_string())?;
+    Ok(target.to_string_lossy().to_string())
+}
+
 fn main() {
     configure_webview_logging();
     let app = tauri::Builder::default()
@@ -346,7 +411,8 @@ fn main() {
             show_main_window_cmd,
             hide_main_window,
             hide_tray_menu,
-            exit_app
+            exit_app,
+            save_attachment_to_downloads
         ])
         .setup(|app| {
             let host = std::env::var("IDLE_NPU_HOST").unwrap_or_else(|_| "127.0.0.1".to_string());

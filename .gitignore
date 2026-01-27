@@ -10,6 +10,12 @@ runtime.log
 backend.log
 crash.log
 sessions.json
+sessions.json.bak
+sessions.db
+sessions.db-shm
+sessions.db-wal
+paths.json
+config/
 .ov_cache/
 .claude/
 src-tauri/target/

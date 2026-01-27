@@ -1787,6 +1787,62 @@ body {
     background-color: rgba(0, 0, 0, 0.8);
 }
 
+.session-files-meta {
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.session-files-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.session-files-empty {
+    margin-top: 12px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+
+.session-file-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--border-color);
+    background-color: var(--bg-tertiary);
+}
+
+.session-file-info {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.session-file-name {
+    font-size: 14px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.session-file-meta {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.session-file-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+
 .settings-tab-body {
     position: relative;
     flex: 1;
@@ -1874,6 +1930,19 @@ body {
     margin-bottom: 8px;
     font-size: 14px;
     color: var(--text-secondary);
+}
+
+.setting-inline {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.setting-hint {
+    margin-top: 6px;
+    font-size: 12px;
+    color: var(--text-muted);
 }
 
 .setting-group select,

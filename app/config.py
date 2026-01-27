@@ -1,3 +1,4 @@
+import json
 import os
 import sys
 from pathlib import Path
@@ -29,14 +30,49 @@ elif getattr(sys, "frozen", False):
 else:
     DATA_DIR = APP_ROOT
 
-MODELS_DIR = DATA_DIR / "models"
+PATHS_CONFIG_FILE = DATA_DIR / "paths.json"
+
+def _load_path_overrides(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    try:
+        raw = path.read_text(encoding="utf-8")
+        data = json.loads(raw)
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+def _resolve_path(value: str, default: Path) -> Path:
+    if not value:
+        return default
+    try:
+        return Path(value).expanduser().resolve()
+    except Exception:
+        return default
+
+_PATH_OVERRIDES = _load_path_overrides(PATHS_CONFIG_FILE)
+
+CONFIG_DIR = _resolve_path(_PATH_OVERRIDES.get("config_dir"), DATA_DIR / "config")
+LOGS_DIR = _resolve_path(_PATH_OVERRIDES.get("logs_dir"), DATA_DIR)
+MODELS_DIR = _resolve_path(_PATH_OVERRIDES.get("models_dir"), DATA_DIR / "models")
+DOWNLOAD_CACHE_DIR = _resolve_path(_PATH_OVERRIDES.get("download_cache_dir"), DATA_DIR / ".download_temp")
+OV_CACHE_DIR = _resolve_path(_PATH_OVERRIDES.get("ov_cache_dir"), DATA_DIR / ".ov_cache")
+SESSIONS_DB_PATH = _resolve_path(_PATH_OVERRIDES.get("sessions_db"), DATA_DIR / "sessions.db")
+
+CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+LOGS_DIR.mkdir(parents=True, exist_ok=True)
 MODELS_DIR.mkdir(parents=True, exist_ok=True)
-
-DOWNLOAD_CACHE_DIR = DATA_DIR / ".download_temp"
 DOWNLOAD_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-
-OV_CACHE_DIR = DATA_DIR / ".ov_cache"
 OV_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+SESSIONS_DB_PATH.parent.mkdir(parents=True, exist_ok=True)
+
+def get_path_overrides() -> dict:
+    return dict(_PATH_OVERRIDES)
+
+def save_path_overrides(overrides: dict) -> None:
+    PATHS_CONFIG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    sanitized = {k: str(v) for k, v in overrides.items() if v}
+    PATHS_CONFIG_FILE.write_text(json.dumps(sanitized, ensure_ascii=False, indent=2), encoding="utf-8")
 
 DEFAULT_CONFIG = {
     "max_new_tokens": 1024,

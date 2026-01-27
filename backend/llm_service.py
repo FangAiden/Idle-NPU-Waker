@@ -6,10 +6,10 @@ from pathlib import Path
 from typing import Dict, Optional, Tuple
 
 from app.core.llm_process import llm_process_entry
-from app.config import DATA_DIR
+from app.config import LOGS_DIR
 from backend.system_status import get_process_memory
 
-_LOG_PATH = Path(DATA_DIR) / "backend.log"
+_LOG_PATH = Path(LOGS_DIR) / "backend.log"
 
 def _log(msg: str) -> None:
     try:

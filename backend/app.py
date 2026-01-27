@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -31,6 +31,12 @@ from app.config import (
     MODELS_DIR,
     DOWNLOAD_CACHE_DIR,
     DATA_DIR,
+    CONFIG_DIR,
+    LOGS_DIR,
+    OV_CACHE_DIR,
+    SESSIONS_DB_PATH,
+    get_path_overrides,
+    save_path_overrides,
     MAX_FILE_BYTES,
     MAX_IMAGE_BYTES,
 )
@@ -127,6 +133,15 @@ class DownloadRequest(BaseModel):
     repo_id: str
 
 
+class AppPathsRequest(BaseModel):
+    models_dir: Optional[str] = None
+    download_cache_dir: Optional[str] = None
+    ov_cache_dir: Optional[str] = None
+    sessions_db: Optional[str] = None
+    config_dir: Optional[str] = None
+    logs_dir: Optional[str] = None
+    attachments_dir: Optional[str] = None
+
 def _sse(payload: Dict[str, Any]) -> str:
     return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
@@ -175,6 +190,40 @@ def _sanitize_attachments(attachments: Optional[List[FileAttachment]]) -> List[D
             content = encoded[:MAX_FILE_BYTES].decode("utf-8", errors="ignore")
         safe.append({"name": name[:200], "content": content, "truncated": truncated, "kind": "text", "mime": mime})
     return safe
+
+
+def _decode_data_url(data_url: str) -> Optional[Dict[str, Any]]:
+    if not data_url or not isinstance(data_url, str):
+        return None
+    if not data_url.startswith("data:"):
+        return None
+    try:
+        header, b64 = data_url.split(",", 1)
+    except ValueError:
+        return None
+    if "base64" not in header:
+        return None
+    mime = ""
+    try:
+        mime = header.split(";", 1)[0].replace("data:", "", 1)
+    except Exception:
+        mime = ""
+    try:
+        import base64
+        raw = base64.b64decode(b64, validate=False)
+    except Exception:
+        return None
+    return {"bytes": raw, "mime": mime or "application/octet-stream"}
+
+
+def _safe_filename(name: str) -> str:
+    name = (name or "").strip()
+    if not name:
+        return "attachment"
+    invalid = '\\/:*?"<>|'
+    for ch in invalid:
+        name = name.replace(ch, "_")
+    return name[:200]
 
 
 def _format_attachments(attachments: List[Dict[str, Any]]) -> str:
@@ -245,12 +294,63 @@ def api_config():
         "models_dir": str(MODELS_DIR),
         "max_file_bytes": MAX_FILE_BYTES,
         "max_image_bytes": MAX_IMAGE_BYTES,
+        "app_paths": {
+            "models_dir": str(MODELS_DIR),
+            "download_cache_dir": str(DOWNLOAD_CACHE_DIR),
+            "ov_cache_dir": str(OV_CACHE_DIR),
+            "sessions_db": str(SESSIONS_DB_PATH),
+            "config_dir": str(CONFIG_DIR),
+            "logs_dir": str(LOGS_DIR),
+            "attachments_dir": get_path_overrides().get("attachments_dir", ""),
+        },
     }
+
+
+@app.get("/api/app-paths")
+def api_app_paths():
+    return {
+        "paths": {
+            "models_dir": str(MODELS_DIR),
+            "download_cache_dir": str(DOWNLOAD_CACHE_DIR),
+            "ov_cache_dir": str(OV_CACHE_DIR),
+            "sessions_db": str(SESSIONS_DB_PATH),
+            "config_dir": str(CONFIG_DIR),
+            "logs_dir": str(LOGS_DIR),
+            "attachments_dir": "",
+        },
+        "overrides": get_path_overrides(),
+    }
+
+
+@app.post("/api/app-paths")
+def api_app_paths_update(req: AppPathsRequest):
+    overrides = get_path_overrides()
+    payload = req.model_dump()
+    for key, value in payload.items():
+        if value is None:
+            continue
+        if isinstance(value, str):
+            trimmed = value.strip()
+            if not trimmed:
+                overrides.pop(key, None)
+                continue
+            overrides[key] = trimmed
+    for key, value in overrides.items():
+        try:
+            target = Path(value).expanduser()
+            if key == "sessions_db":
+                target.parent.mkdir(parents=True, exist_ok=True)
+            else:
+                target.mkdir(parents=True, exist_ok=True)
+        except Exception:
+            pass
+    save_path_overrides(overrides)
+    return {"ok": True, "overrides": overrides, "restart_required": True}
 
 
 LANG_DIR = ROOT_DIR / "app" / "lang"
 AVAILABLE_LANGS = ["en_US", "zh_CN"]
-LANG_PREF_FILE = DATA_DIR / "lang.json"
+LANG_PREF_FILE = CONFIG_DIR / "lang.json"
 
 
 def _load_saved_lang() -> str:
@@ -435,6 +535,62 @@ def api_sessions_messages(sid: str):
         if not session:
             raise HTTPException(status_code=404, detail="Session not found")
         return {"messages": session.get("history", [])}
+
+
+@app.get("/api/sessions/{sid}/attachments/{msg_index}/{att_index}")
+def api_sessions_attachment(sid: str, msg_index: int, att_index: int):
+    with session_lock:
+        session = session_mgr.get_session(sid)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        history = session.get("history", [])
+        if msg_index < 0 or msg_index >= len(history):
+            raise HTTPException(status_code=404, detail="Message not found")
+        attachments = history[msg_index].get("attachments") or []
+        if att_index < 0 or att_index >= len(attachments):
+            raise HTTPException(status_code=404, detail="Attachment not found")
+        att = attachments[att_index]
+        name = _safe_filename(str(att.get("name") or "attachment"))
+        kind = str(att.get("kind") or "").lower()
+        mime = str(att.get("mime") or "")
+        content = att.get("content") or ""
+
+        raw = None
+        media_type = mime or "application/octet-stream"
+        if kind == "image" and isinstance(content, str) and content.startswith("data:"):
+            decoded = _decode_data_url(content)
+            if decoded:
+                raw = decoded["bytes"]
+                media_type = decoded["mime"]
+        if raw is None:
+            if isinstance(content, str):
+                raw = content.encode("utf-8", errors="ignore")
+                media_type = mime or "text/plain; charset=utf-8"
+            else:
+                raw = bytes(content)
+        headers = {
+            "Content-Disposition": f'attachment; filename="{name}"'
+        }
+        return Response(content=raw, media_type=media_type, headers=headers)
+
+
+@app.get("/api/sessions/{sid}/size")
+def api_sessions_size(sid: str):
+    with session_lock:
+        size = session_mgr.get_session_size(sid)
+        if size is None:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return {"size_bytes": size}
+
+
+@app.post("/api/sessions/{sid}/clear")
+def api_sessions_clear(sid: str):
+    with session_lock:
+        if not session_mgr.get_session(sid):
+            raise HTTPException(status_code=404, detail="Session not found")
+        ok = session_mgr.clear_session(sid)
+        session_mgr._save_sessions()
+        return {"ok": bool(ok)}
 
 
 @app.post("/api/sessions/{sid}/messages/edit")

@@ -40,6 +40,7 @@ let systemStatusInterval = null;
 let autoScrollEnabled = true;
 const SCROLL_BOTTOM_THRESHOLD = 80;
 let codeBlockObserver = null;
+let attachmentsDirOverride = '';
 
 // i18n State
 let currentLang = 'en_US';
@@ -89,6 +90,12 @@ const renameInput = document.getElementById('renameInput');
 const closeRenameBtn = document.getElementById('closeRenameBtn');
 const cancelRenameBtn = document.getElementById('cancelRenameBtn');
 const confirmRenameBtn = document.getElementById('confirmRenameBtn');
+const sessionFilesBtn = document.getElementById('sessionFilesBtn');
+const sessionFilesModal = document.getElementById('sessionFilesModal');
+const closeSessionFilesBtn = document.getElementById('closeSessionFilesBtn');
+const sessionFilesList = document.getElementById('sessionFilesList');
+const sessionFilesEmpty = document.getElementById('sessionFilesEmpty');
+const sessionFilesCount = document.getElementById('sessionFilesCount');
 const imagePreviewModal = document.getElementById('imagePreviewModal');
 const imagePreviewImage = document.getElementById('imagePreviewImage');
 const imagePreviewCaption = document.getElementById('imagePreviewCaption');
@@ -123,6 +130,17 @@ const closeConfirmCloseBtn = document.getElementById('closeConfirmCloseBtn');
 const closeToTrayBtn = document.getElementById('closeToTrayBtn');
 const closeExitBtn = document.getElementById('closeExitBtn');
 const deleteModelBtn = document.getElementById('deleteModelBtn');
+const currentChatSize = document.getElementById('currentChatSize');
+const clearChatBtn = document.getElementById('clearChatBtn');
+const modelsDirInput = document.getElementById('modelsDirInput');
+const ovCacheDirInput = document.getElementById('ovCacheDirInput');
+const downloadCacheDirInput = document.getElementById('downloadCacheDirInput');
+const sessionsDbInput = document.getElementById('sessionsDbInput');
+const configDirInput = document.getElementById('configDirInput');
+const logsDirInput = document.getElementById('logsDirInput');
+const attachmentsDirInput = document.getElementById('attachmentsDirInput');
+const saveAppPathsBtn = document.getElementById('saveAppPathsBtn');
+const pathsRestartHint = document.getElementById('pathsRestartHint');
 
 // Language Elements
 const langBtn = document.getElementById('langBtn');
@@ -1290,6 +1308,252 @@ function closeImagePreview() {
     }
 }
 
+function parseDataUrl(dataUrl) {
+    if (typeof dataUrl !== 'string' || !dataUrl.startsWith('data:')) {
+        return { mime: '', data: '' };
+    }
+    const [header, data] = dataUrl.split(',', 2);
+    const mimeMatch = header.match(/data:([^;]+)/i);
+    return { mime: mimeMatch ? mimeMatch[1] : '', data: data || '' };
+}
+
+function dataUrlToBlob(dataUrl) {
+    const parsed = parseDataUrl(dataUrl);
+    if (!parsed.data) {
+        return { blob: new Blob([]), mime: parsed.mime };
+    }
+    let byteString = '';
+    try {
+        byteString = atob(parsed.data);
+    } catch (error) {
+        return { blob: new Blob([]), mime: parsed.mime };
+    }
+    const buffer = new Uint8Array(byteString.length);
+    for (let i = 0; i < byteString.length; i += 1) {
+        buffer[i] = byteString.charCodeAt(i);
+    }
+    const blob = new Blob([buffer], { type: parsed.mime || 'application/octet-stream' });
+    return { blob, mime: parsed.mime };
+}
+
+function dataUrlToBase64(dataUrl) {
+    if (typeof dataUrl !== 'string') return '';
+    const parts = dataUrl.split(',');
+    return parts.length > 1 ? parts[1] : '';
+}
+
+function bytesToBase64(bytes) {
+    if (!bytes || !bytes.length) return '';
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        const slice = bytes.subarray(i, i + chunkSize);
+        binary += String.fromCharCode(...slice);
+    }
+    return btoa(binary);
+}
+
+function textToBase64(text) {
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(text || '');
+    return bytesToBase64(bytes);
+}
+
+function estimateAttachmentSize(att) {
+    if (!att || !att.content) return 0;
+    const kind = (att.kind || '').toLowerCase();
+    if (kind === 'image' && typeof att.content === 'string' && att.content.startsWith('data:')) {
+        const parsed = parseDataUrl(att.content);
+        if (!parsed.data) return 0;
+        const len = parsed.data.length;
+        const padding = parsed.data.endsWith('==') ? 2 : parsed.data.endsWith('=') ? 1 : 0;
+        return Math.max(0, Math.floor((len * 3) / 4) - padding);
+    }
+    try {
+        return new Blob([String(att.content)]).size;
+    } catch (error) {
+        return String(att.content).length;
+    }
+}
+
+function collectSessionAttachments() {
+    const files = [];
+    currentMessages.forEach((msg, msgIndex) => {
+        const attachments = msg.attachments || [];
+        attachments.forEach((att, attIndex) => {
+            const content = typeof att.content === 'string' ? att.content : '';
+            if (!content) return;
+            const name = att.name || `attachment-${msgIndex + 1}-${attIndex + 1}`;
+            const kind = (att.kind || (content.startsWith('data:image/') ? 'image' : 'text')).toLowerCase();
+            const mime = att.mime || (kind === 'image' ? parseDataUrl(content).mime : 'text/plain');
+            const size = estimateAttachmentSize({ content, kind });
+            files.push({
+                id: `${msgIndex}-${attIndex}`,
+                name,
+                kind,
+                mime,
+                size,
+                content,
+                messageIndex: msgIndex,
+                attachmentIndex: attIndex
+            });
+        });
+    });
+    return files;
+}
+
+function openExternal(url) {
+    const tauri = window.__TAURI__;
+    if (tauri && tauri.shell && typeof tauri.shell.open === 'function') {
+        try {
+            tauri.shell.open(url);
+            return true;
+        } catch (error) {
+            console.warn('Failed to open external url:', error);
+        }
+    }
+    try {
+        window.open(url, '_blank', 'noopener');
+        return true;
+    } catch (error) {
+        return false;
+    }
+}
+
+async function downloadAttachment(file) {
+    if (!file || !file.content) return;
+    const invoke = getTauriInvoke();
+    if (invoke) {
+        try {
+            let base64 = '';
+            if (typeof file.content === 'string' && file.content.startsWith('data:')) {
+                base64 = dataUrlToBase64(file.content);
+            } else {
+                base64 = textToBase64(String(file.content));
+            }
+            const savedPath = await invoke('save_attachment_to_downloads', {
+                name: file.name || 'attachment',
+                data_base64: base64,
+                target_dir: attachmentsDirOverride || ''
+            });
+            if (savedPath) {
+                showToast(t('msg_file_saved', savedPath));
+            } else {
+                showToast(t('msg_file_saved', file.name || 'attachment'));
+            }
+            return;
+        } catch (error) {
+            console.warn('Tauri download failed, fallback to web download:', error);
+        }
+    }
+    if (currentSessionId != null &&
+        Number.isInteger(file.messageIndex) &&
+        Number.isInteger(file.attachmentIndex)) {
+        const url = `${API_BASE}/api/sessions/${currentSessionId}/attachments/${file.messageIndex}/${file.attachmentIndex}`;
+        try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error('download failed');
+            const blob = await response.blob();
+            const objectUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = objectUrl;
+            link.download = file.name || 'attachment';
+            link.rel = 'noopener';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+            showToast(t('msg_file_saved', file.name || 'attachment'));
+            return;
+        } catch (error) {
+            const opened = openExternal(url);
+            if (!opened) {
+                showToast(t('dialog_error', 'Error'));
+            } else {
+                showToast(t('msg_file_saved', file.name || 'attachment'));
+            }
+            return;
+        }
+    }
+    let blob;
+    let mime = file.mime || '';
+    try {
+        if (typeof file.content === 'string' && file.content.startsWith('data:')) {
+            const response = await fetch(file.content);
+            blob = await response.blob();
+            mime = response.type || mime;
+        } else {
+            blob = new Blob([file.content], { type: mime || 'text/plain' });
+        }
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = file.name || 'attachment';
+        link.rel = 'noopener';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+        console.warn('Failed to download attachment:', error);
+        showToast(t('dialog_error', 'Error'));
+    }
+}
+
+function renderSessionFiles() {
+    if (!sessionFilesList || !sessionFilesEmpty || !sessionFilesCount) return;
+    sessionFilesList.innerHTML = '';
+    const files = collectSessionAttachments();
+    sessionFilesCount.textContent = t('session_files_count', files.length);
+    if (files.length === 0) {
+        sessionFilesEmpty.classList.remove('hidden');
+        return;
+    }
+    sessionFilesEmpty.classList.add('hidden');
+    files.forEach(file => {
+        const item = document.createElement('div');
+        item.className = 'session-file-item';
+
+        const info = document.createElement('div');
+        info.className = 'session-file-info';
+        const name = document.createElement('div');
+        name.className = 'session-file-name';
+        name.textContent = file.name;
+        const meta = document.createElement('div');
+        meta.className = 'session-file-meta';
+        const kindLabel = file.kind ? file.kind.toUpperCase() : 'FILE';
+        meta.textContent = `${kindLabel} · ${formatBytes(file.size)}`;
+        info.appendChild(name);
+        info.appendChild(meta);
+
+        const actions = document.createElement('div');
+        actions.className = 'session-file-actions';
+        const downloadBtn = document.createElement('button');
+        downloadBtn.className = 'refresh-btn';
+        downloadBtn.textContent = t('btn_download_file', 'Download');
+        downloadBtn.type = 'button';
+        downloadBtn.addEventListener('click', () => {
+            downloadAttachment(file);
+        });
+        actions.appendChild(downloadBtn);
+
+        item.appendChild(info);
+        item.appendChild(actions);
+        sessionFilesList.appendChild(item);
+    });
+}
+
+function openSessionFiles() {
+    if (!sessionFilesModal) return;
+    renderSessionFiles();
+    showAnimated(sessionFilesModal);
+}
+
+function closeSessionFiles() {
+    if (!sessionFilesModal) return;
+    hideAnimated(sessionFilesModal);
+}
+
 function isImageFile(file) {
     if (file && file.type && file.type.startsWith('image/')) return true;
     if (!file || !file.name) return false;
@@ -1462,6 +1726,7 @@ async function init() {
     currentLang = await resolveInitialLang();
     await loadI18n(currentLang);
     await loadConfig();
+    await loadAppPaths();
     await restoreModelStatus();
     if (!modelLoaded && getAutoLoadEnabled()) {
         attemptAutoLoadLastModel();
@@ -1614,6 +1879,67 @@ async function loadConfig() {
         await loadLocalModels();
     } catch (error) {
         console.error('Failed to load config:', error);
+    }
+}
+
+function setPathInputValue(input, value, placeholder) {
+    if (!input) return;
+    input.value = value || '';
+    if (placeholder) {
+        input.placeholder = placeholder;
+        input.title = placeholder;
+    }
+}
+
+async function loadAppPaths() {
+    try {
+        const response = await fetch(`${API_BASE}/api/app-paths`);
+        if (!response.ok) return;
+        const data = await response.json();
+        const paths = data.paths || {};
+        const overrides = data.overrides || {};
+        setPathInputValue(modelsDirInput, overrides.models_dir, paths.models_dir);
+        setPathInputValue(ovCacheDirInput, overrides.ov_cache_dir, paths.ov_cache_dir);
+        setPathInputValue(downloadCacheDirInput, overrides.download_cache_dir, paths.download_cache_dir);
+        setPathInputValue(sessionsDbInput, overrides.sessions_db, paths.sessions_db);
+        setPathInputValue(configDirInput, overrides.config_dir, paths.config_dir);
+        setPathInputValue(logsDirInput, overrides.logs_dir, paths.logs_dir);
+        const downloadsPlaceholder = t('placeholder_system_downloads', 'System default (Downloads)');
+        setPathInputValue(attachmentsDirInput, overrides.attachments_dir, downloadsPlaceholder);
+        attachmentsDirOverride = overrides.attachments_dir || '';
+    } catch (error) {
+        console.warn('Failed to load app paths:', error);
+    }
+}
+
+async function saveAppPaths() {
+    if (!saveAppPathsBtn) return;
+    const payload = {
+        models_dir: modelsDirInput ? modelsDirInput.value.trim() : '',
+        ov_cache_dir: ovCacheDirInput ? ovCacheDirInput.value.trim() : '',
+        download_cache_dir: downloadCacheDirInput ? downloadCacheDirInput.value.trim() : '',
+        sessions_db: sessionsDbInput ? sessionsDbInput.value.trim() : '',
+        config_dir: configDirInput ? configDirInput.value.trim() : '',
+        logs_dir: logsDirInput ? logsDirInput.value.trim() : '',
+        attachments_dir: attachmentsDirInput ? attachmentsDirInput.value.trim() : ''
+    };
+    try {
+        const response = await fetch(`${API_BASE}/api/app-paths`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || 'Failed to save paths');
+        }
+        showToast(t('msg_paths_saved', 'Paths saved. Restart required.'));
+        if (pathsRestartHint) {
+            pathsRestartHint.classList.remove('hidden');
+        }
+        await loadAppPaths();
+    } catch (error) {
+        showToast(error.message || t('dialog_error', 'Error'));
     }
 }
 
@@ -1818,6 +2144,61 @@ function renderMessages(messages) {
         scrollToBottom(true);
     }
     updateScrollState();
+    refreshCurrentChatSize();
+}
+
+function estimateSessionSize(messages) {
+    let total = 0;
+    (messages || []).forEach(msg => {
+        total += new Blob([String(msg.content || '')]).size;
+        const attachments = msg.attachments || [];
+        attachments.forEach(att => {
+            total += estimateAttachmentSize(att);
+        });
+    });
+    return total;
+}
+
+async function refreshCurrentChatSize() {
+    if (!currentChatSize) return;
+    if (!currentSessionId) {
+        currentChatSize.textContent = '--';
+        return;
+    }
+    try {
+        const response = await fetch(`${API_BASE}/api/sessions/${currentSessionId}/size`);
+        if (!response.ok) {
+            throw new Error('Failed to load size');
+        }
+        const data = await response.json();
+        const size = typeof data.size_bytes === 'number' ? data.size_bytes : 0;
+        currentChatSize.textContent = formatBytes(size);
+        return;
+    } catch (error) {
+        const fallback = estimateSessionSize(currentMessages);
+        currentChatSize.textContent = formatBytes(fallback);
+    }
+}
+
+async function clearCurrentChat() {
+    if (!currentSessionId) {
+        showToast(t('msg_no_chat', 'No chat selected'));
+        return;
+    }
+    const confirmMsg = t('dialog_clear_chat', 'Clear current chat history?');
+    if (!window.confirm(confirmMsg)) return;
+    try {
+        const response = await fetch(`${API_BASE}/api/sessions/${currentSessionId}/clear`, { method: 'POST' });
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            throw new Error(error.detail || 'Clear failed');
+        }
+        renderMessages([]);
+        await loadSessions();
+        showToast(t('msg_chat_cleared', 'Chat cleared'));
+    } catch (error) {
+        showToast(error.message || t('dialog_error', 'Error'));
+    }
 }
 
 function normalizeMessageContent(content) {
@@ -2047,6 +2428,7 @@ async function applyEditMessage(index, newText) {
     currentMessages[index].content = content;
     truncateMessages(index + 1);
     updateMessageContent(index, content);
+    refreshCurrentChatSize();
     return true;
 }
 
@@ -2173,6 +2555,7 @@ async function regenerateAssistant() {
         isGenerating = false;
         sendBtn.classList.remove('hidden');
         stopBtn.classList.add('hidden');
+        refreshCurrentChatSize();
     }
 }
 
@@ -3173,6 +3556,11 @@ async function cancelDownload() {
 
 function openSettingsModal() {
     showAnimated(settingsModal);
+    refreshCurrentChatSize();
+    loadAppPaths();
+    if (pathsRestartHint) {
+        pathsRestartHint.classList.add('hidden');
+    }
 }
 
 function closeSettingsModal() {
@@ -3344,6 +3732,18 @@ function setupEventListeners() {
         if (e.target === renameModal) closeRenameModal();
     });
 
+    if (sessionFilesBtn) {
+        sessionFilesBtn.addEventListener('click', openSessionFiles);
+    }
+    if (closeSessionFilesBtn) {
+        closeSessionFilesBtn.addEventListener('click', closeSessionFiles);
+    }
+    if (sessionFilesModal) {
+        sessionFilesModal.addEventListener('click', (e) => {
+            if (e.target === sessionFilesModal) closeSessionFiles();
+        });
+    }
+
     if (imagePreviewClose) {
         imagePreviewClose.addEventListener('click', closeImagePreview);
     }
@@ -3361,6 +3761,12 @@ function setupEventListeners() {
     }
     if (cancelDownloadBtn) {
         cancelDownloadBtn.addEventListener('click', cancelDownload);
+    }
+    if (clearChatBtn) {
+        clearChatBtn.addEventListener('click', clearCurrentChat);
+    }
+    if (saveAppPathsBtn) {
+        saveAppPathsBtn.addEventListener('click', saveAppPaths);
     }
 
     localModelSelect.addEventListener('change', () => {
@@ -3399,6 +3805,9 @@ function setupEventListeners() {
             closeModelSwitcher();
             if (isImagePreviewOpen()) {
                 closeImagePreview();
+            }
+            if (sessionFilesModal && sessionFilesModal.classList.contains('ui-open')) {
+                closeSessionFiles();
             }
         }
     });
