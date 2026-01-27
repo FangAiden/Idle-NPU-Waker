@@ -22,6 +22,7 @@ let currentMessages = [];
 let editingIndex = null;
 let downloadRunning = false;
 let downloadAbortController = null;
+let downloadCancelled = false;
 let loadedModelConfig = { path: '', device: 'AUTO', maxPromptLen: 16384 };
 let modelReloadRequired = false;
 const LAST_MODEL_KEY = 'last_model_config';
@@ -2868,6 +2869,7 @@ async function startDownload() {
         return;
     }
 
+    downloadCancelled = false;
     setDownloadRunning(true);
     setDownloadIndeterminate(true);
     if (downloadStatus) {
@@ -2928,6 +2930,13 @@ async function startDownload() {
                         finishedPath = data.path || '';
                     } else if (data.type === 'error') {
                         throw new Error(data.message || 'Download failed');
+                    } else if (data.type === 'cancelled') {
+                        downloadCancelled = true;
+                        if (downloadStatus) {
+                            downloadStatus.textContent = t('dl_cancelled');
+                        }
+                        done = true;
+                        break;
                     } else if (data.type === 'done') {
                         done = true;
                         break;
@@ -2942,6 +2951,9 @@ async function startDownload() {
             }
         }
 
+        if (downloadCancelled) {
+            return;
+        }
         if (downloadStatus) {
             downloadStatus.textContent = t('status_ready');
         }
@@ -2972,6 +2984,7 @@ async function startDownload() {
 
 async function cancelDownload() {
     try {
+        downloadCancelled = true;
         await fetch(`${API_BASE}/api/download/stop`, { method: 'POST' });
         if (downloadAbortController) {
             downloadAbortController.abort();

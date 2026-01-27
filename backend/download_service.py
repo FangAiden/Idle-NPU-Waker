@@ -1,9 +1,24 @@
+import multiprocessing
 import queue
-import subprocess
-import sys
 import threading
 import time
-from typing import Optional, Dict
+from pathlib import Path
+from typing import Optional, Dict, List
+
+
+def _run_download_task(args: List[str], event_queue) -> None:
+    try:
+        from app.core.download_script import run_download_task
+        run_download_task(args, event_queue)
+    except Exception as exc:
+        try:
+            event_queue.put({"type": "error", "message": str(exc)})
+        except Exception:
+            pass
+        try:
+            event_queue.put({"type": "done"})
+        except Exception:
+            pass
 
 
 class DownloadService:
@@ -13,7 +28,8 @@ class DownloadService:
         self._models_dir = models_dir
 
         self._lock = threading.Lock()
-        self._process: Optional[subprocess.Popen] = None
+        self._process: Optional[multiprocessing.Process] = None
+        self._ipc_queue: Optional[object] = None
         self._queue: Optional[queue.Queue] = None
         self._reader: Optional[threading.Thread] = None
         self._running = False
@@ -47,33 +63,26 @@ class DownloadService:
         with self._lock:
             if self._running:
                 raise RuntimeError("Download already running")
+            model_name = repo_id.split("/")[-1].strip()
+            if model_name:
+                candidates = [model_name]
+                replaced = model_name.replace(".", "___")
+                if replaced != model_name:
+                    candidates.append(replaced)
+                models_root = Path(self._models_dir)
+                for name in candidates:
+                    if (models_root / name).exists():
+                        raise RuntimeError(f"模型已存在: {name}")
 
-            if getattr(sys, "frozen", False):
-                cmd = [
-                    sys.executable,
-                    "--download-script",
-                    repo_id,
-                    self._cache_dir,
-                    self._models_dir,
-                ]
-            else:
-                cmd = [
-                    sys.executable,
-                    self._script_path,
-                    repo_id,
-                    self._cache_dir,
-                    self._models_dir,
-                ]
-            self._process = subprocess.Popen(
-                cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                encoding="utf-8",
-                errors="ignore",
-                bufsize=1,
-            )
+            ctx = multiprocessing.get_context("spawn")
+            self._ipc_queue = ctx.Queue()
             self._queue = queue.Queue()
+            self._process = ctx.Process(
+                target=_run_download_task,
+                args=([repo_id, self._cache_dir, self._models_dir], self._ipc_queue),
+                daemon=True,
+            )
+            self._process.start()
             self._running = True
             self._reader = threading.Thread(target=self._read_loop, daemon=True)
             self._reader.start()
@@ -93,70 +102,84 @@ class DownloadService:
 
     def stop(self) -> None:
         with self._lock:
-            if not self._process:
+            process = self._process
+            ipc_queue = self._ipc_queue
+            if not process:
                 return
             try:
-                self._process.kill()
+                if process.is_alive():
+                    process.terminate()
+                    process.join(timeout=1)
             finally:
                 self._running = False
                 self._status["running"] = False
                 self._status["message"] = "cancelled"
                 self._status["updated_at"] = time.time()
 
+        if ipc_queue is not None:
+            try:
+                ipc_queue.put({"type": "cancelled"})
+            except Exception:
+                pass
+            try:
+                ipc_queue.put({"type": "done"})
+            except Exception:
+                pass
+
+    def _handle_event(self, item: Dict[str, object]) -> None:
+        event_type = item.get("type")
+        if event_type == "progress":
+            percent = int(item.get("percent") or 0)
+            file_name = item.get("file") or ""
+            self._update_status(percent=percent, file=file_name, message="")
+            return
+        if event_type == "finished":
+            path = item.get("path") or ""
+            self._update_status(path=path)
+            return
+        if event_type == "error":
+            message = item.get("message") or ""
+            self._update_status(error=message, message="")
+            return
+        if event_type == "cancelled":
+            self._update_status(message="cancelled")
+            return
+        if event_type == "log":
+            message = item.get("message") or ""
+            if message:
+                self._update_status(message=message)
+
     def _read_loop(self) -> None:
-        assert self._process is not None
+        assert self._ipc_queue is not None
         assert self._queue is not None
-        assert self._process.stdout is not None
 
-        for raw in self._process.stdout:
-            line = raw.strip()
-            if not line:
+        done = False
+        while True:
+            try:
+                item = self._ipc_queue.get(timeout=0.2)
+            except queue.Empty:
+                if self._process is not None and not self._process.is_alive():
+                    break
                 continue
 
-            if line.startswith("@PROGRESS@"):
-                parts = line.split("@")
-                if len(parts) >= 4:
-                    try:
-                        percent = int(parts[3])
-                    except ValueError:
-                        percent = 0
-                    self._update_status(percent=percent, file=parts[2], message="")
-                    self._queue.put(
-                        {"type": "progress", "file": parts[2], "percent": percent}
-                    )
+            if not isinstance(item, dict):
                 continue
+            self._handle_event(item)
+            self._queue.put(item)
+            if item.get("type") == "done":
+                done = True
+                break
 
-            if line.startswith("@FINISHED@"):
-                parts = line.split("@")
-                if len(parts) >= 3:
-                    self._update_status(path=parts[2])
-                    self._queue.put({"type": "finished", "path": parts[2]})
-                continue
-
-            if line.startswith("@ERROR@"):
-                parts = line.split("@")
-                if len(parts) >= 3:
-                    self._update_status(error=parts[2], message="")
-                    self._queue.put({"type": "error", "message": parts[2]})
-                continue
-
-            if line.startswith("@LOG@"):
-                content = line[5:].strip()
-                if content:
-                    self._update_status(message=content)
-                    self._queue.put({"type": "log", "message": content})
-                continue
-
-            self._update_status(message=line)
-            self._queue.put({"type": "log", "message": line})
-
-        exit_code = self._process.wait()
-        if exit_code != 0:
-            self._update_status(error=f"Download exited with code {exit_code}")
-            self._queue.put(
-                {"type": "error", "message": f"Download exited with code {exit_code}"}
-            )
-        self._queue.put({"type": "done"})
+        if not done:
+            exit_code = None
+            if self._process is not None:
+                self._process.join(timeout=0)
+                exit_code = self._process.exitcode
+            if exit_code not in (0, None):
+                error = f"Download exited with code {exit_code}"
+                self._update_status(error=error, message="")
+                self._queue.put({"type": "error", "message": error})
+            self._queue.put({"type": "done"})
 
         with self._lock:
             self._running = False
