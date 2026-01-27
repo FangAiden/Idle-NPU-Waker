@@ -85,7 +85,14 @@ DEFAULT_CONFIG = {
     "max_history_turns": 10,
     "add_generation_prompt": True,
     "enable_thinking": True,
-    "skip_special_tokens": True
+    "skip_special_tokens": True,
+    "negative_prompt": "",
+    "width": 1024,
+    "height": 1024,
+    "num_inference_steps": 4,
+    "guidance_scale": 0.0,
+    "num_images_per_prompt": 1,
+    "rng_seed": -1
 }
 
 CONFIG_GROUPS = [

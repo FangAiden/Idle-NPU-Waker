@@ -36,6 +36,17 @@ def scan_dirs(roots: List[Path], max_depth: int = 4):
         try:
             for d in root.iterdir():
                 if not d.is_dir(): continue
+
+                try:
+                    kind = detect_model_kind(d)
+                except Exception:
+                    kind = ""
+                if kind == "image":
+                    key = str(d.resolve())
+                    if key not in seen:
+                        seen.add(key)
+                        found.append({"name": d.name, "path": key, "kind": kind})
+                    continue
                 
                 has_ir_here = _has_any(d, IR_PATTERNS, recursive=False)
                 has_ir_sub  = _has_any(d, IR_PATTERNS, recursive=True) if not has_ir_here else False

@@ -80,6 +80,35 @@ def _collect_all_setting_keys() -> Set[str]:
             keys.add(key)
     return keys
 
+def _infer_image_setting_keys() -> Set[str]:
+    try:
+        import openvino_genai as ov_genai
+        cfg = ov_genai.ImageGenerationConfig()
+        keys = set()
+        for name in dir(cfg):
+            if name.startswith("_"):
+                continue
+            try:
+                value = getattr(cfg, name)
+            except Exception:
+                continue
+            if callable(value):
+                continue
+            keys.add(name)
+        if keys:
+            return keys
+    except Exception:
+        pass
+    return {
+        "negative_prompt",
+        "num_inference_steps",
+        "guidance_scale",
+        "width",
+        "height",
+        "num_images_per_prompt",
+        "rng_seed",
+    }
+
 def _match_model_rule(rule_id: str, rule: Dict[str, Any],
                       model_name: Optional[str], model_path: Optional[str]) -> bool:
     if not rule_id:
@@ -108,6 +137,14 @@ def _match_model_rule(rule_id: str, rule: Dict[str, Any],
 def resolve_supported_setting_keys(model_name: Optional[str] = None,
                                    model_path: Optional[str] = None,
                                    all_setting_keys: Optional[Set[str]] = None) -> Set[str]:
+    if model_path:
+        try:
+            from app.utils.model_type import detect_model_kind
+            if detect_model_kind(Path(model_path)) == "image":
+                return _infer_image_setting_keys()
+        except Exception:
+            pass
+
     schema = load_model_settings_schema()
     defaults = schema.get("defaults", {})
     model_rules = schema.get("models", {})

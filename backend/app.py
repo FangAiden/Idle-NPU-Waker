@@ -661,6 +661,8 @@ def api_chat_stream(req: ChatStreamRequest):
 
     messages = _build_messages(history, config)
     assistant_text = ""
+    assistant_attachments: List[Dict[str, Any]] = []
+    assistant_attachments: List[Dict[str, Any]] = []
 
     def event_stream():
         nonlocal assistant_text
@@ -684,6 +686,12 @@ def api_chat_stream(req: ChatStreamRequest):
                     token = item.get("token", "")
                     assistant_text += token
                     yield _sse({"type": "token", "token": token})
+                elif msg_type == "image":
+                    raw_attachments = item.get("attachments") or []
+                    safe_attachments = _sanitize_attachments(raw_attachments)
+                    if safe_attachments:
+                        assistant_attachments.extend(safe_attachments)
+                        yield _sse({"type": "image", "attachments": safe_attachments})
                 elif msg_type == "error":
                     yield _sse({"type": "error", "message": item.get("msg", "Error")})
                     break
@@ -693,9 +701,14 @@ def api_chat_stream(req: ChatStreamRequest):
                     break
         finally:
             llm_service.finish_generation()
-            if assistant_text:
+            if assistant_text or assistant_attachments:
                 with session_lock:
-                    session_mgr.add_message("assistant", assistant_text, sid=req.session_id)
+                    session_mgr.add_message(
+                        "assistant",
+                        assistant_text,
+                        sid=req.session_id,
+                        attachments=assistant_attachments
+                    )
 
     return StreamingResponse(
         event_stream(),
@@ -746,6 +759,12 @@ def api_chat_regenerate(req: ChatRegenerateRequest):
                     token = item.get("token", "")
                     assistant_text += token
                     yield _sse({"type": "token", "token": token})
+                elif msg_type == "image":
+                    raw_attachments = item.get("attachments") or []
+                    safe_attachments = _sanitize_attachments(raw_attachments)
+                    if safe_attachments:
+                        assistant_attachments.extend(safe_attachments)
+                        yield _sse({"type": "image", "attachments": safe_attachments})
                 elif msg_type == "error":
                     yield _sse({"type": "error", "message": item.get("msg", "Error")})
                     break
@@ -755,9 +774,14 @@ def api_chat_regenerate(req: ChatRegenerateRequest):
                     break
         finally:
             llm_service.finish_generation()
-            if assistant_text:
+            if assistant_text or assistant_attachments:
                 with session_lock:
-                    session_mgr.add_message("assistant", assistant_text, sid=req.session_id)
+                    session_mgr.add_message(
+                        "assistant",
+                        assistant_text,
+                        sid=req.session_id,
+                        attachments=assistant_attachments
+                    )
 
     return StreamingResponse(
         event_stream(),

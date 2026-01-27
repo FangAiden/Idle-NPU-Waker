@@ -97,6 +97,11 @@ class LLMService:
                     self._generation_queue.put({"type": "token", "token": msg.get("token", "")})
                 continue
 
+            if msg_type == "image":
+                if self._generation_queue is not None:
+                    self._generation_queue.put({"type": "image", "attachments": msg.get("attachments") or []})
+                continue
+
             if msg_type == "finished":
                 if self._generation_queue is not None:
                     stats = msg.get("stats", {})

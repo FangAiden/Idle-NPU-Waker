@@ -335,6 +335,39 @@
                                 <span data-i18n="conf_do_sample">Enable Sampling</span>
                             </label>
                         </div>
+                        <div class="setting-group" data-setting-key="negative_prompt">
+                            <label data-i18n="conf_img_negative_prompt">Negative Prompt</label>
+                            <textarea id="negativePrompt" rows="2"></textarea>
+                        </div>
+                        <div class="setting-group" data-setting-key="width">
+                            <label data-i18n="conf_img_width">Width</label>
+                            <input type="number" id="imageWidth" min="64" max="2048" step="64" value="1024">
+                        </div>
+                        <div class="setting-group" data-setting-key="height">
+                            <label data-i18n="conf_img_height">Height</label>
+                            <input type="number" id="imageHeight" min="64" max="2048" step="64" value="1024">
+                        </div>
+                        <div class="setting-group" data-setting-key="num_inference_steps">
+                            <label data-i18n="conf_img_steps">Inference Steps</label>
+                            <input type="number" id="imageSteps" min="1" max="150" step="1" value="4">
+                        </div>
+                        <div class="setting-group" data-setting-key="guidance_scale">
+                            <label><span data-i18n="conf_img_guidance">Guidance Scale</span>: <span id="imageGuidanceValue">0.0</span></label>
+                            <input type="range" id="imageGuidance" min="0" max="20" step="0.1" value="0.0">
+                        </div>
+                        <div class="setting-group" data-setting-key="num_images_per_prompt">
+                            <label data-i18n="conf_img_images">Images per prompt</label>
+                            <input type="number" id="imageImages" min="1" max="8" step="1" value="1">
+                        </div>
+                        <div class="setting-group" data-setting-key="max_sequence_length">
+                            <label data-i18n="conf_img_max_seq">Max Sequence Length</label>
+                            <input type="number" id="imageMaxSeq" min="1" step="1" data-i18n-placeholder="placeholder_auto" placeholder="Auto">
+                            <div class="setting-hint" data-i18n="hint_img_max_seq">Leave empty to auto-detect per model.</div>
+                        </div>
+                        <div class="setting-group" data-setting-key="rng_seed">
+                            <label data-i18n="conf_img_seed">Seed (-1 for random)</label>
+                            <input type="number" id="imageSeed" min="-1" step="1" value="-1">
+                        </div>
                     </div>
 
                     <div class="tab-content" id="tab-context">

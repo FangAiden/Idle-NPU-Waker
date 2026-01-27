@@ -41,6 +41,10 @@ let autoScrollEnabled = true;
 const SCROLL_BOTTOM_THRESHOLD = 80;
 let codeBlockObserver = null;
 let attachmentsDirOverride = '';
+let imageProgressTimer = null;
+let imageProgressValue = 0;
+let imageProgressContentDiv = null;
+const IMAGE_THUMB_SIZE = 64;
 
 // i18n State
 let currentLang = 'en_US';
@@ -174,6 +178,15 @@ const topKValue = document.getElementById('topKValue');
 const repPenaltyInput = document.getElementById('repPenalty');
 const repPenaltyValue = document.getElementById('repPenaltyValue');
 const doSampleInput = document.getElementById('doSample');
+const negativePromptInput = document.getElementById('negativePrompt');
+const imageWidthInput = document.getElementById('imageWidth');
+const imageHeightInput = document.getElementById('imageHeight');
+const imageStepsInput = document.getElementById('imageSteps');
+const imageGuidanceInput = document.getElementById('imageGuidance');
+const imageGuidanceValue = document.getElementById('imageGuidanceValue');
+const imageImagesInput = document.getElementById('imageImages');
+const imageMaxSeqInput = document.getElementById('imageMaxSeq');
+const imageSeedInput = document.getElementById('imageSeed');
 const historyTurnsInput = document.getElementById('historyTurns');
 const historyTurnsValue = document.getElementById('historyTurnsValue');
 const systemPromptInput = document.getElementById('systemPrompt');
@@ -631,6 +644,7 @@ function getModelKindLabel(kind) {
     const normalized = (kind || '').toLowerCase();
     if (normalized === 'vlm') return 'VLM';
     if (normalized === 'llm') return 'LLM';
+    if (normalized === 'image') return 'IMG';
     return '';
 }
 
@@ -853,6 +867,38 @@ function applyConfigToInputs(cfg) {
     }
     if (typeof cfg.do_sample === 'boolean' && doSampleInput) {
         doSampleInput.checked = cfg.do_sample;
+    }
+    if (typeof cfg.negative_prompt === 'string' && negativePromptInput) {
+        negativePromptInput.value = cfg.negative_prompt;
+    }
+    const width = normalizeInt(cfg.width);
+    if (width !== null && imageWidthInput) {
+        imageWidthInput.value = width;
+    }
+    const height = normalizeInt(cfg.height);
+    if (height !== null && imageHeightInput) {
+        imageHeightInput.value = height;
+    }
+    const steps = normalizeInt(cfg.num_inference_steps);
+    if (steps !== null && imageStepsInput) {
+        imageStepsInput.value = steps;
+    }
+    const guidance = normalizeNumber(cfg.guidance_scale);
+    if (guidance !== null && imageGuidanceInput) {
+        imageGuidanceInput.value = guidance;
+        if (imageGuidanceValue) imageGuidanceValue.textContent = guidance;
+    }
+    const images = normalizeInt(cfg.num_images_per_prompt);
+    if (images !== null && imageImagesInput) {
+        imageImagesInput.value = images;
+    }
+    const maxSeq = normalizeInt(cfg.max_sequence_length);
+    if (maxSeq !== null && imageMaxSeqInput) {
+        imageMaxSeqInput.value = maxSeq;
+    }
+    const seed = normalizeInt(cfg.rng_seed);
+    if (seed !== null && imageSeedInput) {
+        imageSeedInput.value = seed;
     }
     const historyTurns = normalizeInt(cfg.max_history_turns);
     if (historyTurns !== null && historyTurnsInput) {
@@ -1229,6 +1275,81 @@ function normalizeAttachment(att) {
     return { name, kind, mime, content };
 }
 
+function drawCoverImage(ctx, img, width, height) {
+    const srcW = img.naturalWidth || img.width || 1;
+    const srcH = img.naturalHeight || img.height || 1;
+    const scale = Math.max(width / srcW, height / srcH);
+    const drawW = width / scale;
+    const drawH = height / scale;
+    const srcX = Math.max(0, (srcW - drawW) / 2);
+    const srcY = Math.max(0, (srcH - drawH) / 2);
+    ctx.drawImage(img, srcX, srcY, drawW, drawH, 0, 0, width, height);
+}
+
+function createPixelRevealThumb(dataUrl, name, onReady) {
+    const canvas = document.createElement('canvas');
+    canvas.className = 'message-attachment-thumb message-attachment-canvas';
+    canvas.width = IMAGE_THUMB_SIZE;
+    canvas.height = IMAGE_THUMB_SIZE;
+    canvas.style.width = `${IMAGE_THUMB_SIZE}px`;
+    canvas.style.height = `${IMAGE_THUMB_SIZE}px`;
+    canvas.tabIndex = 0;
+    canvas.setAttribute('role', 'button');
+    canvas.setAttribute('aria-label', name || 'image');
+
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return canvas;
+
+    const img = new Image();
+    img.decoding = 'async';
+    img.onload = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawCoverImage(ctx, img, canvas.width, canvas.height);
+        const srcData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const destData = ctx.createImageData(canvas.width, canvas.height);
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        const total = canvas.width * canvas.height;
+        const order = new Uint32Array(total);
+        for (let i = 0; i < total; i += 1) order[i] = i;
+        for (let i = total - 1; i > 0; i -= 1) {
+            const j = Math.floor(Math.random() * (i + 1));
+            const tmp = order[i];
+            order[i] = order[j];
+            order[j] = tmp;
+        }
+
+        const chunk = Math.max(64, Math.floor(total / 28));
+        let offset = 0;
+
+        const step = () => {
+            const end = Math.min(total, offset + chunk);
+            for (let i = offset; i < end; i += 1) {
+                const idx = order[i] * 4;
+                destData.data[idx] = srcData.data[idx];
+                destData.data[idx + 1] = srcData.data[idx + 1];
+                destData.data[idx + 2] = srcData.data[idx + 2];
+                destData.data[idx + 3] = 255;
+            }
+            ctx.putImageData(destData, 0, 0);
+            offset = end;
+            if (offset < total) {
+                requestAnimationFrame(step);
+            } else if (typeof onReady === 'function') {
+                onReady();
+            }
+        };
+
+        requestAnimationFrame(step);
+    };
+    img.onerror = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    };
+    img.src = dataUrl;
+
+    return canvas;
+}
+
 function renderMessageAttachments(messageDiv, attachments, messageIndex = null) {
     if (!messageDiv) return;
     const existing = messageDiv.querySelector('.message-attachments');
@@ -1238,6 +1359,7 @@ function renderMessageAttachments(messageDiv, attachments, messageIndex = null) 
 
     const wrap = document.createElement('div');
     wrap.className = 'message-attachments';
+    const isAssistant = messageDiv.classList.contains('assistant');
 
     attachments.forEach((raw, attIndex) => {
         const att = normalizeAttachment(raw);
@@ -1245,23 +1367,35 @@ function renderMessageAttachments(messageDiv, attachments, messageIndex = null) 
         item.className = 'message-attachment-card';
 
         if (att.kind === 'image' && att.content.startsWith('data:image/')) {
-            const thumb = document.createElement('img');
-            thumb.className = 'message-attachment-thumb';
-            thumb.alt = att.name || 'image';
-            thumb.title = att.name || '';
-            thumb.loading = 'lazy';
-            thumb.decoding = 'async';
-            thumb.src = att.content;
-            thumb.tabIndex = 0;
-            thumb.setAttribute('role', 'button');
-            thumb.addEventListener('click', () => openImagePreview(att.content, att.name));
-            thumb.addEventListener('keydown', (event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault();
-                    openImagePreview(att.content, att.name);
-                }
-            });
-            item.appendChild(thumb);
+            if (isAssistant) {
+                const canvas = createPixelRevealThumb(att.content, att.name);
+                canvas.addEventListener('click', () => openImagePreview(att.content, att.name));
+                canvas.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        openImagePreview(att.content, att.name);
+                    }
+                });
+                item.appendChild(canvas);
+            } else {
+                const thumb = document.createElement('img');
+                thumb.className = 'message-attachment-thumb';
+                thumb.alt = att.name || 'image';
+                thumb.title = att.name || '';
+                thumb.loading = 'lazy';
+                thumb.decoding = 'async';
+                thumb.src = att.content;
+                thumb.tabIndex = 0;
+                thumb.setAttribute('role', 'button');
+                thumb.addEventListener('click', () => openImagePreview(att.content, att.name));
+                thumb.addEventListener('keydown', (event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        openImagePreview(att.content, att.name);
+                    }
+                });
+                item.appendChild(thumb);
+            }
         }
 
         const info = document.createElement('div');
@@ -2539,6 +2673,7 @@ async function regenerateAssistant() {
                         const data = JSON.parse(line.slice(6));
 
                         if (data.type === 'token') {
+                            stopImageProgress(false);
                             fullResponse += data.token;
                             incrementGenTokens();
                             if (contentDiv) {
@@ -2549,11 +2684,30 @@ async function regenerateAssistant() {
                             }
                             currentMessages[assistantIndex].content = fullResponse;
                             scrollToBottom();
+                        } else if (data.type === 'image') {
+                            stopImageProgress(true);
+                            const newAttachments = Array.isArray(data.attachments) ? data.attachments : [];
+                            if (newAttachments.length > 0) {
+                                if (!currentMessages[assistantIndex].attachments) {
+                                    currentMessages[assistantIndex].attachments = [];
+                                }
+                                currentMessages[assistantIndex].attachments.push(...newAttachments);
+                                if (contentDiv && !fullResponse) {
+                                    contentDiv.innerHTML = formatAssistantContent(fullResponse);
+                                }
+                                const messageDiv = messagesDiv.querySelector(`.message[data-index="${assistantIndex}"]`);
+                                if (messageDiv) {
+                                    renderMessageAttachments(messageDiv, currentMessages[assistantIndex].attachments, assistantIndex);
+                                }
+                                scrollToBottom();
+                            }
                         } else if (data.type === 'error') {
+                            stopImageProgress(false);
                             if (contentDiv) {
                                 contentDiv.innerHTML = `<span style="color: var(--error-color)">${t('dialog_error')}: ${escapeHtml(data.message)}</span>`;
                             }
                         } else if (data.type === 'done') {
+                            stopImageProgress(false);
                             if (data.stats && data.stats.tokens > 0 && contentDiv) {
                                 const statsDiv = document.createElement('div');
                                 statsDiv.className = 'message-stats';
@@ -2580,10 +2734,12 @@ async function regenerateAssistant() {
             }
         }
     } catch (error) {
+        stopImageProgress(false);
         if (contentDiv) {
             contentDiv.innerHTML = `<span style="color: var(--error-color)">${t('dialog_error')}: ${escapeHtml(error.message)}</span>`;
         }
     } finally {
+        stopImageProgress(false);
         stopGenStats();
         isGenerating = false;
         sendBtn.classList.remove('hidden');
@@ -2993,6 +3149,23 @@ function toggleThinkBox(details) {
 
 function setAssistantPlaceholder(contentDiv) {
     if (!contentDiv) return;
+    const mode = (loadedModelConfig && loadedModelConfig.kind || '').toLowerCase();
+    if (mode === 'image') {
+        const label = escapeHtml(t('msg_generating_image', 'Generating image...'));
+        const hint = escapeHtml(t('msg_image_wait_hint', 'Diffusing details...'));
+        contentDiv.innerHTML = `
+            <div class="assistant-placeholder image-placeholder">
+                <div class="image-wait-preview">
+                    <span class="image-wait-scan"></span>
+                </div>
+                <div class="image-wait-meta">
+                    <span class="assistant-placeholder-text">${label}</span>
+                    <span class="image-wait-hint">${hint}</span>
+                </div>
+            </div>
+        `;
+        return;
+    }
     const label = escapeHtml(t('msg_thinking', 'Thinking...'));
     contentDiv.innerHTML = `
         <div class="assistant-placeholder">
@@ -3000,6 +3173,43 @@ function setAssistantPlaceholder(contentDiv) {
             <span class="typing-dots"><span></span><span></span><span></span></span>
         </div>
     `;
+}
+
+function startImageProgress(contentDiv) {
+    if (!contentDiv) return;
+    stopImageProgress(false);
+    imageProgressContentDiv = contentDiv;
+    imageProgressValue = 0;
+    const bar = contentDiv.querySelector('.image-progress-fill');
+    const label = contentDiv.querySelector('.image-progress-value');
+    const update = () => {
+        if (!imageProgressContentDiv || !document.body.contains(imageProgressContentDiv)) {
+            stopImageProgress(false);
+            return;
+        }
+        const max = 96;
+        const step = Math.max(0.4, (max - imageProgressValue) * 0.05);
+        imageProgressValue = Math.min(max, imageProgressValue + step);
+        if (bar) bar.style.width = `${imageProgressValue}%`;
+        if (label) label.textContent = `${Math.round(imageProgressValue)}%`;
+    };
+    update();
+    imageProgressTimer = setInterval(update, 200);
+}
+
+function stopImageProgress(finalize = false) {
+    if (imageProgressTimer) {
+        clearInterval(imageProgressTimer);
+    }
+    if (finalize && imageProgressContentDiv) {
+        const bar = imageProgressContentDiv.querySelector('.image-progress-fill');
+        const label = imageProgressContentDiv.querySelector('.image-progress-value');
+        if (bar) bar.style.width = '100%';
+        if (label) label.textContent = '100%';
+    }
+    imageProgressTimer = null;
+    imageProgressContentDiv = null;
+    imageProgressValue = 0;
 }
 
 function escapeHtml(text) {
@@ -3244,6 +3454,7 @@ async function sendMessage() {
                         const data = JSON.parse(line.slice(6));
 
                         if (data.type === 'token') {
+                            stopImageProgress(false);
                             fullResponse += data.token;
                             incrementGenTokens();
                             if (contentDiv) {
@@ -3254,9 +3465,28 @@ async function sendMessage() {
                             }
                             currentMessages[assistantIndex].content = fullResponse;
                             scrollToBottom();
+                        } else if (data.type === 'image') {
+                            stopImageProgress(true);
+                            const newAttachments = Array.isArray(data.attachments) ? data.attachments : [];
+                            if (newAttachments.length > 0) {
+                                if (!currentMessages[assistantIndex].attachments) {
+                                    currentMessages[assistantIndex].attachments = [];
+                                }
+                                currentMessages[assistantIndex].attachments.push(...newAttachments);
+                                if (contentDiv && !fullResponse) {
+                                    contentDiv.innerHTML = formatAssistantContent(fullResponse);
+                                }
+                                const messageDiv = messagesDiv.querySelector(`.message[data-index="${assistantIndex}"]`);
+                                if (messageDiv) {
+                                    renderMessageAttachments(messageDiv, currentMessages[assistantIndex].attachments, assistantIndex);
+                                }
+                                scrollToBottom();
+                            }
                         } else if (data.type === 'error') {
+                            stopImageProgress(false);
                             contentDiv.innerHTML = `<span style="color: var(--error-color)">${t('dialog_error')}: ${escapeHtml(data.message)}</span>`;
                         } else if (data.type === 'done') {
+                            stopImageProgress(false);
                             // Show stats if available
                             if (data.stats && data.stats.tokens > 0) {
                                 const statsDiv = document.createElement('div');
@@ -3287,10 +3517,12 @@ async function sendMessage() {
             }
         }
     } catch (error) {
+        stopImageProgress(false);
         contentDiv.innerHTML = `<span style="color: var(--error-color)">${t('dialog_error')}: ${escapeHtml(error.message)}</span>`;
         pendingAttachments = attachments;
         renderAttachments();
     } finally {
+        stopImageProgress(false);
         stopGenStats();
         isGenerating = false;
         sendBtn.classList.remove('hidden');
@@ -3320,6 +3552,37 @@ function getGenerationConfig() {
     addConfigValue(config, 'top_k', parseInt(topKInput.value));
     addConfigValue(config, 'repetition_penalty', parseFloat(repPenaltyInput.value));
     addConfigValue(config, 'do_sample', doSampleInput.checked);
+    if (negativePromptInput) {
+        addConfigValue(config, 'negative_prompt', negativePromptInput.value);
+    }
+    if (imageWidthInput) {
+        const width = parseInt(imageWidthInput.value, 10);
+        if (Number.isFinite(width)) addConfigValue(config, 'width', width);
+    }
+    if (imageHeightInput) {
+        const height = parseInt(imageHeightInput.value, 10);
+        if (Number.isFinite(height)) addConfigValue(config, 'height', height);
+    }
+    if (imageStepsInput) {
+        const steps = parseInt(imageStepsInput.value, 10);
+        if (Number.isFinite(steps)) addConfigValue(config, 'num_inference_steps', steps);
+    }
+    if (imageGuidanceInput) {
+        const guidance = parseFloat(imageGuidanceInput.value);
+        if (Number.isFinite(guidance)) addConfigValue(config, 'guidance_scale', guidance);
+    }
+    if (imageImagesInput) {
+        const images = parseInt(imageImagesInput.value, 10);
+        if (Number.isFinite(images)) addConfigValue(config, 'num_images_per_prompt', images);
+    }
+    if (imageMaxSeqInput) {
+        const maxSeq = parseInt(imageMaxSeqInput.value, 10);
+        if (Number.isFinite(maxSeq) && maxSeq > 0) addConfigValue(config, 'max_sequence_length', maxSeq);
+    }
+    if (imageSeedInput) {
+        const seed = parseInt(imageSeedInput.value, 10);
+        if (Number.isFinite(seed) && seed >= 0) addConfigValue(config, 'rng_seed', seed);
+    }
     addConfigValue(config, 'max_history_turns', parseInt(historyTurnsInput.value));
     addConfigValue(config, 'system_prompt', systemPromptInput.value);
     addConfigValue(config, 'enable_thinking', enableThinkingInput.checked);
@@ -3930,6 +4193,50 @@ function setupSettingsListeners() {
     doSampleInput.addEventListener('change', () => {
         scheduleUserConfigSave();
     });
+
+    if (negativePromptInput) {
+        negativePromptInput.addEventListener('input', () => {
+            scheduleUserConfigSave();
+        });
+    }
+    if (imageWidthInput) {
+        imageWidthInput.addEventListener('input', () => {
+            scheduleUserConfigSave();
+        });
+    }
+    if (imageHeightInput) {
+        imageHeightInput.addEventListener('input', () => {
+            scheduleUserConfigSave();
+        });
+    }
+    if (imageStepsInput) {
+        imageStepsInput.addEventListener('input', () => {
+            scheduleUserConfigSave();
+        });
+    }
+    if (imageGuidanceInput) {
+        imageGuidanceInput.addEventListener('input', () => {
+            if (imageGuidanceValue) {
+                imageGuidanceValue.textContent = imageGuidanceInput.value;
+            }
+            scheduleUserConfigSave();
+        });
+    }
+    if (imageImagesInput) {
+        imageImagesInput.addEventListener('input', () => {
+            scheduleUserConfigSave();
+        });
+    }
+    if (imageMaxSeqInput) {
+        imageMaxSeqInput.addEventListener('input', () => {
+            scheduleUserConfigSave();
+        });
+    }
+    if (imageSeedInput) {
+        imageSeedInput.addEventListener('input', () => {
+            scheduleUserConfigSave();
+        });
+    }
 
     enableThinkingInput.addEventListener('change', () => {
         scheduleUserConfigSave();
