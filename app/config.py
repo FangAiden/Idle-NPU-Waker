@@ -3,7 +3,7 @@ import os
 import sys
 from pathlib import Path
 
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.1.0"
 MAX_FILE_BYTES = 512 * 1024
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_AUDIO_BYTES = 20 * 1024 * 1024
