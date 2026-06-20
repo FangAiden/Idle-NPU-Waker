@@ -2,8 +2,10 @@ import multiprocessing
 import queue
 import threading
 import time
+import sys
+import subprocess
 from pathlib import Path
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Any
 
 
 def _run_download_task(args: List[str], event_queue) -> None:
@@ -28,7 +30,7 @@ class DownloadService:
         self._models_dir = models_dir
 
         self._lock = threading.Lock()
-        self._process: Optional[multiprocessing.Process] = None
+        self._process: Any = None
         self._ipc_queue: Optional[object] = None
         self._queue: Optional[queue.Queue] = None
         self._reader: Optional[threading.Thread] = None
@@ -74,18 +76,35 @@ class DownloadService:
                     if (models_root / name).exists():
                         raise RuntimeError(f"模型已存在: {name}")
 
-            ctx = multiprocessing.get_context("spawn")
-            self._ipc_queue = ctx.Queue()
-            self._queue = queue.Queue()
-            self._process = ctx.Process(
-                target=_run_download_task,
-                args=([repo_id, self._cache_dir, self._models_dir], self._ipc_queue),
-                daemon=True,
-            )
-            self._process.start()
-            self._running = True
-            self._reader = threading.Thread(target=self._read_loop, daemon=True)
-            self._reader.start()
+            if getattr(sys, "frozen", False):
+                self._queue = queue.Queue()
+                creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0x08000000)
+                self._process = subprocess.Popen(
+                    [sys.executable, "--download-script", repo_id, self._cache_dir, self._models_dir],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    creationflags=creationflags
+                )
+                self._running = True
+                self._reader = threading.Thread(target=self._read_stdout_loop, daemon=True)
+                self._reader.start()
+            else:
+                ctx = multiprocessing.get_context("spawn")
+                self._ipc_queue = ctx.Queue()
+                self._queue = queue.Queue()
+                self._process = ctx.Process(
+                    target=_run_download_task,
+                    args=([repo_id, self._cache_dir, self._models_dir], self._ipc_queue),
+                    daemon=True,
+                )
+                self._process.start()
+                self._running = True
+                self._reader = threading.Thread(target=self._read_loop, daemon=True)
+                self._reader.start()
+
             self._status = {
                 "running": True,
                 "repo_id": repo_id,
@@ -107,9 +126,17 @@ class DownloadService:
             if not process:
                 return
             try:
-                if process.is_alive():
-                    process.terminate()
-                    process.join(timeout=1)
+                if isinstance(process, subprocess.Popen):
+                    if process.poll() is None:
+                        process.terminate()
+                        try:
+                            process.wait(timeout=1)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                else:
+                    if process.is_alive():
+                        process.terminate()
+                        process.join(timeout=1)
             finally:
                 self._running = False
                 self._status["running"] = False
@@ -180,6 +207,52 @@ class DownloadService:
                 self._update_status(error=error, message="")
                 self._queue.put({"type": "error", "message": error})
             self._queue.put({"type": "done"})
+
+        with self._lock:
+            self._running = False
+            self._status["running"] = False
+            self._status["updated_at"] = time.time()
+
+    def _read_stdout_loop(self) -> None:
+        assert self._process is not None
+        assert self._queue is not None
+
+        while True:
+            line = self._process.stdout.readline()
+            if not line:
+                break
+            line = line.strip()
+            if not line:
+                continue
+
+            item = None
+            if line.startswith("@PROGRESS@"):
+                parts = line.split("@", 3)
+                if len(parts) >= 4:
+                    try:
+                        percent = float(parts[3] or 0)
+                    except ValueError:
+                        percent = 0
+                    item = {"type": "progress", "file": parts[2], "percent": percent}
+            elif line.startswith("@LOG@"):
+                item = {"type": "log", "message": line[5:]}
+            elif line.startswith("@FINISHED@"):
+                item = {"type": "finished", "path": line[10:]}
+            elif line.startswith("@ERROR@"):
+                item = {"type": "error", "message": line[7:]}
+
+            if item:
+                self._handle_event(item)
+                self._queue.put(item)
+
+        self._process.wait()
+        exit_code = self._process.returncode
+        if exit_code != 0:
+            error = f"Download exited with code {exit_code}"
+            self._update_status(error=error, message="")
+            self._queue.put({"type": "error", "message": error})
+
+        self._queue.put({"type": "done"})
 
         with self._lock:
             self._running = False

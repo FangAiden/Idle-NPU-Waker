@@ -22,3 +22,4 @@ src-tauri/target/
 src-tauri/bin/
 .venv-build/
 venv
+src-tauri/gen/

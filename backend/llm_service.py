@@ -143,7 +143,7 @@ class LLMService:
                 {"type": "load", "args": (source, model_id, model_dir, device, max_prompt_len)}
             )
 
-        deadline = time.time() + 300
+        deadline = time.time() + 1800
         while True:
             if self._load_event.wait(timeout=0.5):
                 break
