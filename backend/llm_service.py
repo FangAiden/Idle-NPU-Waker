@@ -143,24 +143,8 @@ class LLMService:
                 {"type": "load", "args": (source, model_id, model_dir, device, max_prompt_len)}
             )
 
-        deadline = time.time() + 1800
         while True:
             if self._load_event.wait(timeout=0.5):
-                break
-            if time.time() >= deadline:
-                _log("Model load timed out")
-                with self._lock:
-                    self._load_result = {"ok": False, "error": "Model load timed out"}
-                    self._loading = False
-                    self._load_stage = "error"
-                    self._load_message = "Model load timed out"
-                    self._load_event.set()
-                if self._process is not None and self._process.is_alive():
-                    try:
-                        self._process.terminate()
-                        self._process.join(timeout=1)
-                    except Exception:
-                        pass
                 break
             if self._process is not None and not self._process.is_alive():
                 _log("Model process exited during load")
